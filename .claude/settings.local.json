@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_data.py -v -m \"not integration\")",
+      "Bash(python -m pytest tests/test_dex.py tests/test_data.py -v -m \"not integration\")",
+      "Bash(python scripts/init_dex_data.py)"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+zaeryn.db
+logs/
+cache/
+reports/
+models/saved/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
