@@ -3,7 +3,15 @@
     "allow": [
       "Bash(python -m pytest tests/test_data.py -v -m \"not integration\")",
       "Bash(python -m pytest tests/test_dex.py tests/test_data.py -v -m \"not integration\")",
-      "Bash(python scripts/init_dex_data.py)"
+      "Bash(python scripts/init_dex_data.py)",
+      "Bash(pip install *)",
+      "Bash(python -m pytest tests/test_sentiment.py tests/test_dex.py tests/test_data.py -v -m \"not integration\")",
+      "Bash(python -c \"from dotenv import load_dotenv; load_dotenv\\(\\)\")",
+      "Bash(python scripts/run_sentiment.py)",
+      "Bash(python -m pytest tests/ -x -q --ignore=tests/test_sentiment.py)",
+      "Bash(python -m pytest tests/test_sentiment.py -x -q -m \"not integration\")",
+      "Bash(python -m pytest tests/ -q -m \"not integration\")",
+      "Bash(python -c \"import scripts.run_sentiment\")"
     ]
   }
 }

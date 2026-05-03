@@ -49,9 +49,11 @@ MAX_POSITION_PCT = 0.10
 DEFAULT_STOP_LOSS_PCT = 0.05
 
 SENTIMENT_WEIGHTS = {
-    "news": 0.5,
-    "reddit": 0.3,
-    "fear_greed": 0.2,
+    "onchain":    0.25,
+    "dex_ratio":  0.30,
+    "news":       0.25,
+    "fear_greed": 0.20,
+    "twitter":    0.00,
 }
 
 REQUEST_TIMEOUT = 10
@@ -86,4 +88,82 @@ GECKO_MAX_CANDLES_PER_REQUEST = 1000
 
 MIN_LIQUIDITY_USD = 50_000
 MIN_VOLUME_24H_USD = 10_000
+
+# -- Sentiment Configuration --------------------------------------------------
+SENTIMENT_CACHE_TTL = {
+    "fear_greed":  60,
+    "news":        20,
+    "twitter":     15,
+    "dex_ratio":   5,
+    "onchain":     60,
+}
+
+# -- Twitter Account Registry -------------------------------------------------
+TWITTER_ACCOUNTS = {
+    "aeyakovenko":     {"tier": 1, "weight": 1.5, "assets": ["SOL-USD"]},
+    "rajgokal":        {"tier": 1, "weight": 1.5, "assets": ["SOL-USD"]},
+    "0xMert_":         {"tier": 1, "weight": 1.5, "assets": ["SOL-USD", "all"]},
+    "weremeow":        {"tier": 1, "weight": 1.5, "assets": ["JUP"]},
+    "therealcharlied": {"tier": 1, "weight": 1.4, "assets": ["JUP"]},
+    "armaniferrante":  {"tier": 1, "weight": 1.3, "assets": ["SOL-USD", "all"]},
+    "DefiIgnas":       {"tier": 2, "weight": 1.2, "assets": ["all"]},
+    "HsakaTrades":     {"tier": 2, "weight": 1.2, "assets": ["all"]},
+    "SmallCapScience": {"tier": 2, "weight": 1.2, "assets": ["all"]},
+    "SolBigBrain":     {"tier": 2, "weight": 1.2, "assets": ["SOL-USD", "all"]},
+    "punk9059":        {"tier": 2, "weight": 1.1, "assets": ["SOL-USD", "all"]},
+    "blknoiz06":       {"tier": 3, "weight": 1.0, "assets": ["all"]},
+    "cobie":           {"tier": 3, "weight": 1.0, "assets": ["all"]},
+    "Pentosh1":        {"tier": 3, "weight": 1.0, "assets": ["SOL-USD"]},
+    "CryptoDonAlt":    {"tier": 3, "weight": 1.0, "assets": ["all"]},
+    "JupiterExchange": {"tier": 4, "weight": 1.3, "assets": ["JUP"]},
+    "bonk_inu":        {"tier": 4, "weight": 1.3, "assets": ["BONK"]},
+    "dogwifcoin":      {"tier": 4, "weight": 1.3, "assets": ["WIF"]},
+    "PythNetwork":     {"tier": 4, "weight": 1.3, "assets": ["PYTH"]},
+    "RaydiumProtocol": {"tier": 4, "weight": 1.3, "assets": ["RAY"]},
+    "pumpdotfun":      {"tier": 4, "weight": 1.0, "assets": ["all"]},
+    "MeteoraAG":       {"tier": 4, "weight": 1.1, "assets": ["RAY", "JUP"]},
+}
+
+ASSET_TWITTER_KEYWORDS = {
+    "BTC-USD":  ["$BTC", "Bitcoin", "#Bitcoin"],
+    "ETH-USD":  ["$ETH", "Ethereum", "#Ethereum"],
+    "SOL-USD":  ["$SOL", "Solana", "#Solana"],
+    "AVAX-USD": ["$AVAX", "Avalanche"],
+    "LINK-USD": ["$LINK", "Chainlink"],
+    "JUP":      ["$JUP", "Jupiter", "JupiterExchange"],
+    "BONK":     ["$BONK", "bonkinu"],
+    "WIF":      ["$WIF", "dogwifhat"],
+    "PYTH":     ["$PYTH", "PythNetwork"],
+    "RAY":      ["$RAY", "Raydium"],
+}
+
+# -- NewsAPI Config -----------------------------------------------------------
+NEWSAPI_BASE_URL = "https://newsapi.org/v2/everything"
+
+ASSET_NEWS_KEYWORDS = {
+    "BTC-USD":  "Bitcoin BTC",
+    "ETH-USD":  "Ethereum ETH",
+    "SOL-USD":  "Solana SOL",
+    "AVAX-USD": "Avalanche AVAX",
+    "LINK-USD": "Chainlink LINK",
+    "JUP":      "Jupiter JUP Solana",
+    "BONK":     "BONK Solana memecoin",
+    "WIF":      "dogwifhat WIF Solana",
+    "PYTH":     "Pyth Network PYTH",
+    "RAY":      "Raydium RAY Solana",
+}
+
+# -- Helius Config ------------------------------------------------------------
+HELIUS_BASE_URL = "https://mainnet.helius-rpc.com"
+HELIUS_API_BASE  = "https://api.helius.xyz/v0"
+WHALE_HOLDER_PCT_THRESHOLD = 1.0
+
+# -- Sentiment Score Labels ---------------------------------------------------
+SENTIMENT_LABELS = {
+    (-1.0, -0.6): "Very Bearish",
+    (-0.6, -0.2): "Bearish",
+    (-0.2,  0.2): "Neutral",
+    ( 0.2,  0.6): "Bullish",
+    ( 0.6,  1.0): "Very Bullish",
+}
  
