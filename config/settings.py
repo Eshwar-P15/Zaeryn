@@ -166,4 +166,94 @@ SENTIMENT_LABELS = {
     ( 0.2,  0.6): "Bullish",
     ( 0.6,  1.0): "Very Bullish",
 }
+
+# -- ML Model Configuration ---------------------------------------------------
+
+# Prediction horizon in candles (12h at 1h granularity)
+MODEL_HORIZON = 12
+
+# Minimum clean rows after feature engineering to attempt training
+# SMA-50 burns 50 rows, forward target burns 12 — need buffer above that
+MODEL_MIN_ROWS = 300
+
+# Chronological train/test split — last fraction held out
+MODEL_TEST_SIZE = 0.20
+
+# Days of history to use when building feature matrix
+MODEL_HISTORY_DAYS = 180
+
+# Where trained model files are saved
+MODEL_SAVE_DIR = "models/saved"
+
+# Annualization factor for 1h candles: 24 hours * 365 days
+ANNUALIZATION_FACTOR = 8760
+
+# XGBoost hyperparameters for volatility regression
+XGB_PARAMS = {
+    "n_estimators":     300,
+    "max_depth":        6,
+    "learning_rate":    0.05,
+    "subsample":        0.8,
+    "colsample_bytree": 0.8,
+    "random_state":     42,
+    "n_jobs":           -1,
+    "verbosity":        0,
+}
+
+# Random Forest hyperparameters for trend classification
+RF_PARAMS = {
+    "n_estimators":     200,
+    "max_depth":        8,
+    "min_samples_leaf": 5,
+    "class_weight":     "balanced",
+    "random_state":     42,
+    "n_jobs":           -1,
+}
+
+# Technical indicator windows — single source of truth
+FEATURE_WINDOWS = {
+    "sma_short":    20,
+    "sma_long":     50,
+    "ema_fast":     12,
+    "ema_slow":     26,
+    "macd_signal":  9,
+    "rsi":          14,
+    "atr":          14,
+    "bb":           20,
+    "roc":          10,
+    "williams_r":   14,
+    "realized_vol": 20,
+    "vwap":         20,
+    "obv_norm":     50,
+}
+
+# Feature columns fed to both ML models — ORDER MATTERS
+# "returns", "log_returns", "price_range" come from normalize_price_data()
+# "volume_ma20" is used to compute "volume_ratio" but is NOT a feature itself
+FEATURE_COLUMNS = [
+    "returns",
+    "log_returns",
+    "price_range",
+    "volume_ratio",
+    "sma_20",
+    "sma_50",
+    "ema_12",
+    "ema_26",
+    "macd",
+    "macd_signal",
+    "macd_hist",
+    "price_vs_sma20",
+    "rsi_14",
+    "roc_10",
+    "williams_r_14",
+    "atr_14",
+    "bb_width",
+    "bb_position",
+    "realized_vol_20",
+    "obv",
+    "vwap_ratio",
+    "hour_of_day",
+    "day_of_week",
+    "is_weekend",
+]
  
