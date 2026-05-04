@@ -256,4 +256,41 @@ FEATURE_COLUMNS = [
     "day_of_week",
     "is_weekend",
 ]
- 
+
+# -- Risk Scoring Engine -------------------------------------------------------
+
+RISK_WEIGHTS = {
+    "volatility":        0.30,
+    "trend_uncertainty": 0.25,
+    "sentiment":         0.20,
+    "price_momentum":    0.15,
+    "market_regime":     0.10,
+}
+
+RISK_THRESHOLDS = {
+    "LOW":      (0,   25),
+    "MODERATE": (25,  50),
+    "HIGH":     (50,  75),
+    "EXTREME":  (75, 100),
+}
+
+RECOMMEND_TRADE  = 35
+RECOMMEND_HOLD   = 55
+RECOMMEND_REDUCE = 70
+
+MAX_POSITION_PCT     = 0.10
+KELLY_WIN_LOSS_RATIO = 1.5
+KELLY_FRACTION       = 0.5
+
+ATR_STOP_MULTIPLIER = 2.0
+RISK_REWARD_RATIO   = 2.0
+
+ALERT_RISK_EXTREME     = 80.0
+ALERT_SENTIMENT_CRASH  = -0.7
+ALERT_VOL_SPIKE_FACTOR = 2.0
+ALERT_PRICE_DROP_PCT   = -5.0
+
+ALERTS_LOG_FILE = "logs/alerts.log"
+
+VOL_RISK_CAP    = 2.0
+RSI_MIN_CANDLES = 20
