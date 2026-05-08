@@ -131,6 +131,20 @@ def fetch_candles(
         return _fetch_from_coinbase(symbol, granularity, days_back)
     elif source == "dex":
         return _fetch_from_dex(symbol, granularity, days_back)
+    elif source == "birdeye":
+        from data.birdeye_fetcher import fetch_birdeye_ohlcv
+        from config.settings import SOLANA_TOKENS
+        mint_address = SOLANA_TOKENS.get(symbol)
+        if not mint_address:
+            logger.error(f"fetch_candles [{symbol}]: no mint address in SOLANA_TOKENS")
+            return pd.DataFrame()
+        result = fetch_birdeye_ohlcv(
+            mint_address=mint_address,
+            symbol=symbol,
+            granularity=granularity,
+            days_back=days_back,
+        )
+        return result if result is not None else pd.DataFrame()
     else:
         raise ValueError(f"Unknown data source '{source}' for symbol '{symbol}'")
 

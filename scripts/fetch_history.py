@@ -13,7 +13,7 @@ from data.storage import init_db, upsert_candles, get_db_stats
 
 logger = get_logger("fetch_history")
 
-FETCH_DAYS = 180
+FETCH_DAYS = 730
 
 
 def main():

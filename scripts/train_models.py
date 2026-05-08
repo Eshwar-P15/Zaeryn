@@ -26,7 +26,7 @@ def main():
     results = train_all_models(
         assets=ALL_ASSETS,
         horizon=MODEL_HORIZON,
-        days_back=180,
+        days_back=730,
         force_retrain=FORCE,
     )
 

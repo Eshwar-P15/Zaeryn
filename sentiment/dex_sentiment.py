@@ -44,7 +44,7 @@ def fetch_dex_sentiment(asset: str) -> dict:
         Price change 1h > 5%: +0.1 boost; < -5%: -0.1 drag
     Confidence based on 1h transaction count.
     """
-    if ASSET_SOURCE.get(asset) != "dex":
+    if ASSET_SOURCE.get(asset) == "coinbase":
         return {
             "score":      0.0,
             "confidence": 0.0,

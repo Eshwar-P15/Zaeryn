@@ -31,8 +31,9 @@ def _helius_post(payload: dict) -> dict:
             return response.json()
         except Exception as e:
             last_error = e
-            logger.warning(f"Helius RPC failed (attempt {attempt+1}): {e}")
-    raise RuntimeError(f"Helius RPC all retries failed: {last_error}")
+            safe_msg = str(e).replace(api_key, "***")
+            logger.warning(f"Helius RPC failed (attempt {attempt+1}): {safe_msg}")
+    raise RuntimeError(f"Helius RPC all retries failed: {str(last_error).replace(api_key, '***')}")
 
 
 def fetch_token_holders(mint_address: str, limit: int = 20) -> list[dict]:

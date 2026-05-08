@@ -15,6 +15,7 @@ from config.settings import (
     MODEL_TEST_SIZE,
     FEATURE_COLUMNS,
     XGB_PARAMS,
+    XGB_PARAMS_BY_ASSET,
 )
 from models.features import build_feature_matrix
 
@@ -83,8 +84,19 @@ class VolatilityPredictor:
         self.scaler = StandardScaler()
         self.scaler.fit(X_train)
 
-        self.model = XGBRegressor(**XGB_PARAMS)
-        self.model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
+        n_train = len(X_train)
+        _weights = np.exp(np.linspace(0, 1, n_train))
+        _weights = _weights / _weights.mean()
+
+        params = XGB_PARAMS_BY_ASSET.get(asset, XGB_PARAMS)
+        logger.info(f"[{asset}] XGB params: {'optimized' if asset in XGB_PARAMS_BY_ASSET else 'default'}")
+        self.model = XGBRegressor(**params)
+        self.model.fit(
+            X_train, y_train,
+            sample_weight=_weights,
+            eval_set=[(X_test, y_test)],
+            verbose=False,
+        )
 
         y_pred = self.model.predict(X_test)
 
@@ -116,6 +128,7 @@ class VolatilityPredictor:
             "top_features": list(self.feature_importances_.keys()),
             "trained_at":   self.trained_at.isoformat(),
         }
+        self.metrics_ = metrics
 
         logger.info(
             f"[{asset}] VolatilityPredictor: "
@@ -163,6 +176,7 @@ class VolatilityPredictor:
             path = os.path.join(MODEL_SAVE_DIR, f"volatility_{safe}_{self.horizon}h.pkl")
 
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        m = getattr(self, "metrics_", {})
         joblib.dump({
             "model":               self.model,
             "scaler":              self.scaler,
@@ -171,6 +185,12 @@ class VolatilityPredictor:
             "asset":               self.asset,
             "trained_at":          self.trained_at,
             "feature_importances": self.feature_importances_,
+            # training metrics — read by dashboard ML Models page
+            "mae":                 m.get("mae"),
+            "rmse":                m.get("rmse"),
+            "r2":                  m.get("r2"),
+            "mape":                m.get("mape"),
+            "train_rows":          m.get("train_rows"),
         }, path)
 
         logger.info(f"VolatilityPredictor saved → {path}")

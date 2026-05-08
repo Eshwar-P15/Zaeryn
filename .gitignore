@@ -12,3 +12,13 @@ dist/
 build/
 .venv/
 venv/
+
+models/saved_backup/
+
+.streamlit/
+
+scripts/best_params.json
+
+scripts/optimize_models.py
+
+scripts/patch_model_metrics.py

@@ -154,6 +154,45 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["day_of_week"]  = df["timestamp"].dt.dayofweek.astype(float)
     df["is_weekend"]   = (df["day_of_week"] >= 5).astype(float)
 
+    # -- New Features ----------------------------------------------------------
+
+    # Volatility regime: current vol vs 60-period rolling mean (>1 = elevated)
+    df["vol_regime"] = np.where(
+        df["realized_vol_20"].rolling(60).mean() > 0,
+        df["realized_vol_20"] / df["realized_vol_20"].rolling(60).mean(),
+        1.0,
+    )
+
+    # ADX-14: trend strength (>25 = strong trend, <20 = choppy)
+    df["adx_14"] = ta.trend.ADXIndicator(
+        high=df["high"],
+        low=df["low"],
+        close=df["close"],
+        window=14,
+    ).adx()
+
+    # Volume trend: 10-period vs 30-period volume MA (>1 = growing participation)
+    vol_ma_10 = df["volume"].rolling(10).mean()
+    vol_ma_30 = df["volume"].rolling(30).mean()
+    df["volume_trend"] = np.where(
+        vol_ma_30 > 0,
+        vol_ma_10 / vol_ma_30,
+        1.0,
+    )
+
+    # Price position in 52-week range (0 = yearly low, 1 = yearly high)
+    rolling_max_52w = df["close"].rolling(8760, min_periods=100).max()
+    rolling_min_52w = df["close"].rolling(8760, min_periods=100).min()
+    range_52w = rolling_max_52w - rolling_min_52w
+    df["yearly_position"] = np.where(
+        range_52w > 0,
+        (df["close"] - rolling_min_52w) / range_52w,
+        0.5,
+    )
+
+    # MACD histogram momentum: acceleration/deceleration of momentum
+    df["macd_hist_momentum"] = df["macd_hist"].diff()
+
     logger.debug(
         f"compute_technical_indicators: {len(df.columns)} total columns, {len(df)} rows"
     )

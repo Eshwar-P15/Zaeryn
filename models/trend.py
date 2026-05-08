@@ -17,6 +17,7 @@ from config.settings import (
     MODEL_TEST_SIZE,
     FEATURE_COLUMNS,
     RF_PARAMS,
+    RF_PARAMS_BY_ASSET,
 )
 from models.features import build_feature_matrix
 
@@ -89,8 +90,14 @@ class TrendClassifier:
             f"UP%={up_pct:.1f}% in training set"
         )
 
-        self.model = RandomForestClassifier(**RF_PARAMS)
-        self.model.fit(X_train, y_train.astype(int))
+        n_train = len(X_train)
+        _weights = np.exp(np.linspace(0, 1, n_train))
+        _weights = _weights / _weights.mean()
+
+        params = RF_PARAMS_BY_ASSET.get(asset, RF_PARAMS)
+        logger.info(f"[{asset}] RF params: {'optimized' if asset in RF_PARAMS_BY_ASSET else 'default'}")
+        self.model = RandomForestClassifier(**params)
+        self.model.fit(X_train, y_train.astype(int), sample_weight=_weights)
 
         y_pred      = self.model.predict(X_test)
         y_pred_prob = self.model.predict_proba(X_test)[:, 1]
@@ -125,6 +132,7 @@ class TrendClassifier:
             "top_features":   list(self.feature_importances_.keys()),
             "trained_at":     self.trained_at.isoformat(),
         }
+        self.metrics_ = metrics
 
         logger.info(
             f"[{asset}] TrendClassifier: "
@@ -197,6 +205,7 @@ class TrendClassifier:
             path = os.path.join(MODEL_SAVE_DIR, f"trend_{safe}_{self.horizon}h.pkl")
 
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        m = getattr(self, "metrics_", {})
         joblib.dump({
             "model":               self.model,
             "feature_columns":     self.feature_columns,
@@ -204,6 +213,13 @@ class TrendClassifier:
             "asset":               self.asset,
             "trained_at":          self.trained_at,
             "feature_importances": self.feature_importances_,
+            # training metrics — read by dashboard ML Models page
+            "auc":                 m.get("auc"),
+            "f1":                  m.get("f1"),
+            "accuracy":            m.get("accuracy"),
+            "precision":           m.get("precision"),
+            "recall":              m.get("recall"),
+            "train_rows":          m.get("train_rows"),
         }, path)
 
         logger.info(f"TrendClassifier saved → {path}")

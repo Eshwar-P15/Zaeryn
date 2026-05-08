@@ -210,6 +210,121 @@ RF_PARAMS = {
     "n_jobs":           -1,
 }
 
+# Per-asset optimized RF params (scripts/optimize_models.py, TimeSeriesSplit CV).
+# Falls back to RF_PARAMS for assets absent from this dict (DEX tokens).
+RF_PARAMS_BY_ASSET = {
+    "BTC-USD": {
+        "n_estimators":     250,
+        "max_depth":        5,
+        "min_samples_leaf": 18,
+        "max_features":     "log2",
+        "class_weight":     "balanced",
+        "random_state":     42,
+        "n_jobs":           -1,
+    },
+    "ETH-USD": {
+        "n_estimators":     100,
+        "max_depth":        9,
+        "min_samples_leaf": 3,
+        "max_features":     "sqrt",
+        "class_weight":     "balanced",
+        "random_state":     42,
+        "n_jobs":           -1,
+    },
+    "SOL-USD": {
+        "n_estimators":     500,
+        "max_depth":        12,
+        "min_samples_leaf": 20,
+        "max_features":     "log2",
+        "class_weight":     "balanced",
+        "random_state":     42,
+        "n_jobs":           -1,
+    },
+    "AVAX-USD": {
+        "n_estimators":     250,
+        "max_depth":        4,
+        "min_samples_leaf": 11,
+        "max_features":     0.7,
+        "class_weight":     "balanced",
+        "random_state":     42,
+        "n_jobs":           -1,
+    },
+    "LINK-USD": {
+        "n_estimators":     400,
+        "max_depth":        7,
+        "min_samples_leaf": 13,
+        "max_features":     "log2",
+        "class_weight":     "balanced",
+        "random_state":     42,
+        "n_jobs":           -1,
+    },
+}
+
+# Per-asset optimized XGB params (scripts/optimize_models.py, TimeSeriesSplit CV).
+# Falls back to XGB_PARAMS for assets absent from this dict (DEX tokens).
+XGB_PARAMS_BY_ASSET = {
+    "BTC-USD": {
+        "n_estimators":     500,
+        "max_depth":        3,
+        "learning_rate":    0.07242386771234251,
+        "subsample":        0.8646399558334101,
+        "colsample_bytree": 0.7738487310109798,
+        "reg_alpha":        2.090861103694884,
+        "reg_lambda":       2.1246850959628887,
+        "random_state":     42,
+        "n_jobs":           -1,
+        "verbosity":        0,
+    },
+    "ETH-USD": {
+        "n_estimators":     550,
+        "max_depth":        5,
+        "learning_rate":    0.020688034342837565,
+        "subsample":        0.7660749108991123,
+        "colsample_bytree": 0.9272380290103938,
+        "reg_alpha":        0.0007397645695810316,
+        "reg_lambda":       0.3294510608548501,
+        "random_state":     42,
+        "n_jobs":           -1,
+        "verbosity":        0,
+    },
+    "SOL-USD": {
+        "n_estimators":     450,
+        "max_depth":        3,
+        "learning_rate":    0.13064444712243672,
+        "subsample":        0.8869597902302647,
+        "colsample_bytree": 0.7786520323125353,
+        "reg_alpha":        7.79381589989218,
+        "reg_lambda":       2.590661369333018,
+        "random_state":     42,
+        "n_jobs":           -1,
+        "verbosity":        0,
+    },
+    "AVAX-USD": {
+        "n_estimators":     600,
+        "max_depth":        3,
+        "learning_rate":    0.012888881312269243,
+        "subsample":        0.7634720264881432,
+        "colsample_bytree": 0.8825566712714911,
+        "reg_alpha":        0.0002182722937565137,
+        "reg_lambda":       0.015056680441649236,
+        "random_state":     42,
+        "n_jobs":           -1,
+        "verbosity":        0,
+    },
+    "LINK-USD": {
+        "n_estimators":     600,
+        "max_depth":        3,
+        "learning_rate":    0.05425704154205256,
+        "subsample":        0.869171923125881,
+        "colsample_bytree": 0.9486580485439955,
+        "reg_alpha":        0.040327063496617715,
+        "reg_lambda":       0.01622427614023289,
+        "random_state":     42,
+        "n_jobs":           -1,
+        "verbosity":        0,
+    },
+}
+
 # Technical indicator windows — single source of truth
 FEATURE_WINDOWS = {
     "sma_short":    20,
@@ -255,6 +370,11 @@ FEATURE_COLUMNS = [
     "hour_of_day",
     "day_of_week",
     "is_weekend",
+    "vol_regime",
+    "adx_14",
+    "volume_trend",
+    "yearly_position",
+    "macd_hist_momentum",
 ]
 
 # -- Risk Scoring Engine -------------------------------------------------------
@@ -279,7 +399,7 @@ RECOMMEND_HOLD   = 55
 RECOMMEND_REDUCE = 70
 
 MAX_POSITION_PCT     = 0.10
-KELLY_WIN_LOSS_RATIO = 1.5
+KELLY_WIN_LOSS_RATIO = 2.00
 KELLY_FRACTION       = 0.5
 
 ATR_STOP_MULTIPLIER = 2.0
@@ -294,3 +414,35 @@ ALERTS_LOG_FILE = "logs/alerts.log"
 
 VOL_RISK_CAP    = 2.0
 RSI_MIN_CANDLES = 20
+
+# -- Backtesting ---------------------------------------------------------------
+
+BACKTEST_COMMISSION_PCT  = 0.001    # 0.1% — Coinbase taker fee
+BACKTEST_INITIAL_CAPITAL = 10_000.0
+BACKTEST_POSITION_PCT    = 0.10     # 10% per trade
+BACKTEST_STOP_LOSS_PCT   = 0.05     # 5% stop loss
+BACKTEST_TAKE_PROFIT_PCT = 0.10     # 10% take profit (2:1 reward/risk)
+BACKTEST_DAYS            = 90
+INDICATOR_WARMUP         = 60
+MIN_TRADES_FOR_METRICS   = 10
+RISK_FREE_RATE_ANNUAL    = 0.05
+BACKTEST_REPORTS_DIR     = "reports"
+BACKTEST_ANNUALIZATION   = 8760
+
+# -- Birdeye API Configuration -------------------------------------------------
+import os as _os
+
+BIRDEYE_API_KEY  = _os.getenv("BIRDEYE_API_KEY", "")
+BIRDEYE_BASE_URL = "https://public-api.birdeye.so"
+BIRDEYE_CHAIN    = "solana"
+
+BIRDEYE_CHUNK_SIZE         = 1000
+BIRDEYE_RATE_LIMIT_SLEEP   = 1.1
+BIRDEYE_HISTORY_DAYS       = 900
+
+# Re-route Solana tokens from "dex" to "birdeye"
+ASSET_SOURCE["JUP"]  = "birdeye"
+ASSET_SOURCE["BONK"] = "birdeye"
+ASSET_SOURCE["WIF"]  = "birdeye"
+ASSET_SOURCE["PYTH"] = "birdeye"
+ASSET_SOURCE["RAY"]  = "birdeye"

@@ -119,13 +119,13 @@ def test_fetch_candles_routes_coinbase():
 
 def test_fetch_candles_routes_dex():
     with patch("data.historical._fetch_from_coinbase") as mock_cb, \
-         patch("data.historical._fetch_from_dex") as mock_dex:
-        mock_dex.return_value = pd.DataFrame(
+         patch("data.birdeye_fetcher.fetch_birdeye_ohlcv") as mock_birdeye:
+        mock_birdeye.return_value = pd.DataFrame(
             columns=["timestamp", "open", "high", "low", "close", "volume"]
         )
         from data.historical import fetch_candles
         fetch_candles("JUP", "1h", 7)
-        mock_dex.assert_called_once()
+        mock_birdeye.assert_called_once()
         mock_cb.assert_not_called()
 
 
