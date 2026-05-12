@@ -18,7 +18,8 @@
       "Bash(python -m pytest tests/test_risk.py -v -m \"not integration\")",
       "Bash(python -m pytest tests/ -v -m \"not integration\")",
       "Bash(python -m pytest tests/ -v -m \"not integration\" --tb=no -q)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(python -X utf8 -m pytest tests/test_yfinance.py -v -m \"not integration\")"
     ]
   }
 }

@@ -74,7 +74,7 @@ def test_dex_sentiment_coinbase_asset_returns_neutral():
     result = fetch_dex_sentiment("BTC-USD")
     assert result["score"] == 0.0
     assert result["confidence"] == 0.0
-    assert "coinbase" in result.get("note", "")
+    assert "non-DEX" in result.get("note", "")
 
 def test_dex_sentiment_buy_dominated():
     mock_pair = {

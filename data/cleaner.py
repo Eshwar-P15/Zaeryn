@@ -43,7 +43,12 @@ def validate_ohlcv(df: pd.DataFrame) -> tuple[bool, list[str]]:
     return is_valid, errors
 
 
-def clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
+def clean_ohlcv(df: pd.DataFrame, gap_fill: bool = True) -> pd.DataFrame:
+    """
+    gap_fill=True  (default): forward-fill isolated NaN runs ≤ MAX_CONSECUTIVE_FILL.
+    gap_fill=False: skip all NaN filling — use for stocks/forex where overnight/weekend
+                    gaps should not be synthetically filled.
+    """
     df = df.copy()
 
     if not pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
@@ -60,19 +65,20 @@ def clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     for col in PRICE_COLUMNS + ["volume"]:
         df[col] = df[col].astype(float)
 
-    for col in PRICE_COLUMNS:
-        nan_mask = df[col].isna()
-        if nan_mask.any():
-            nan_groups = nan_mask.ne(nan_mask.shift()).cumsum()
-            group_sizes = nan_mask.groupby(nan_groups).transform("sum")
+    if gap_fill:
+        for col in PRICE_COLUMNS:
+            nan_mask = df[col].isna()
+            if nan_mask.any():
+                nan_groups = nan_mask.ne(nan_mask.shift()).cumsum()
+                group_sizes = nan_mask.groupby(nan_groups).transform("sum")
 
-            fillable = nan_mask & (group_sizes <= MAX_CONSECUTIVE_FILL)
-            large_gaps = nan_mask & (group_sizes > MAX_CONSECUTIVE_FILL)
+                fillable = nan_mask & (group_sizes <= MAX_CONSECUTIVE_FILL)
+                large_gaps = nan_mask & (group_sizes > MAX_CONSECUTIVE_FILL)
 
-            if large_gaps.any():
-                logger.warning(f"Large data gap detected in '{col}' - {large_gaps.sum()} unfilled NaNs")
+                if large_gaps.any():
+                    logger.warning(f"Large data gap detected in '{col}' - {large_gaps.sum()} unfilled NaNs")
 
-            df.loc[fillable, col] = df[col].ffill()
+                df.loc[fillable, col] = df[col].ffill()
 
     df = df.reset_index(drop=True)
     logger.debug(f"clean_ohlcv: {len(df)} rows after cleaning")

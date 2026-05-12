@@ -446,3 +446,55 @@ ASSET_SOURCE["BONK"] = "birdeye"
 ASSET_SOURCE["WIF"]  = "birdeye"
 ASSET_SOURCE["PYTH"] = "birdeye"
 ASSET_SOURCE["RAY"]  = "birdeye"
+
+# -- Phase 6: Stocks & Forex via yfinance ----------------------------------------
+
+STOCK_TICKERS = ["AAPL", "TSLA", "AMZN", "MSFT", "NVDA", "GOOGL", "META", "NFLX"]
+FOREX_TICKERS = ["EUR-USD", "GBP-USD", "JPY-USD", "AUD-USD"]
+
+YFINANCE_TICKER_MAP = {
+    "AAPL":    "AAPL",
+    "TSLA":    "TSLA",
+    "AMZN":    "AMZN",
+    "MSFT":    "MSFT",
+    "NVDA":    "NVDA",
+    "GOOGL":   "GOOGL",
+    "META":    "META",
+    "NFLX":    "NFLX",
+    "EUR-USD": "EURUSD=X",
+    "GBP-USD": "GBPUSD=X",
+    "JPY-USD": "JPYUSD=X",
+    "AUD-USD": "AUDUSD=X",
+}
+
+ASSET_CLASS = {}
+for _a in ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD", "LINK-USD",
+           "JUP", "BONK", "WIF", "PYTH", "RAY"]:
+    ASSET_CLASS[_a] = "crypto"
+for _t in STOCK_TICKERS:
+    ASSET_CLASS[_t] = "stock"
+for _t in FOREX_TICKERS:
+    ASSET_CLASS[_t] = "forex"
+
+YFINANCE_MAX_DAYS_1H = 729
+
+for _t in STOCK_TICKERS + FOREX_TICKERS:
+    ASSET_SOURCE[_t] = "yfinance"
+
+# Refresh ALL_ASSETS to include the new yfinance assets (line 26 captured only original 10)
+ALL_ASSETS = list(ASSET_SOURCE.keys())
+
+ASSET_NEWS_KEYWORDS.update({
+    "AAPL":    "Apple AAPL stock earnings",
+    "TSLA":    "Tesla TSLA stock",
+    "AMZN":    "Amazon AMZN stock",
+    "MSFT":    "Microsoft MSFT stock",
+    "NVDA":    "Nvidia NVDA GPU AI",
+    "GOOGL":   "Google Alphabet GOOGL",
+    "META":    "Meta Facebook META stock",
+    "NFLX":    "Netflix NFLX stock",
+    "EUR-USD": "Euro dollar EURUSD forex",
+    "GBP-USD": "British pound sterling GBPUSD",
+    "JPY-USD": "Japanese yen USDJPY forex",
+    "AUD-USD": "Australian dollar AUDUSD forex",
+})

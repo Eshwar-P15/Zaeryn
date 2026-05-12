@@ -44,13 +44,13 @@ def fetch_dex_sentiment(asset: str) -> dict:
         Price change 1h > 5%: +0.1 boost; < -5%: -0.1 drag
     Confidence based on 1h transaction count.
     """
-    if ASSET_SOURCE.get(asset) == "coinbase":
+    if ASSET_SOURCE.get(asset) not in ("dex", "birdeye"):
         return {
             "score":      0.0,
             "confidence": 0.0,
             "source":     "dex_ratio",
             "asset":      asset,
-            "note":       "coinbase asset - no DEX ratio available",
+            "note":       "non-DEX asset - no DEX ratio available",
         }
 
     from data.dex_fetcher import get_pair_address

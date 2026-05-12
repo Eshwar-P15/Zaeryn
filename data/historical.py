@@ -145,6 +145,9 @@ def fetch_candles(
             days_back=days_back,
         )
         return result if result is not None else pd.DataFrame()
+    elif source == "yfinance":
+        from data.yfinance_fetcher import fetch_yfinance_ohlcv
+        return fetch_yfinance_ohlcv(symbol, granularity=granularity, days_back=days_back)
     else:
         raise ValueError(f"Unknown data source '{source}' for symbol '{symbol}'")
 
