@@ -1,23 +1,23 @@
 import time
-import requests
+from datetime import timedelta
+
 import pandas as pd
-from datetime import datetime, timedelta
-from typing import Optional
+import requests
 
 from config.settings import (
+    CANDLE_REQUEST_SLEEP,
+    GECKO_AGGREGATES,
+    GECKO_GRANULARITIES,
+    GECKO_MAX_CANDLES_PER_REQUEST,
     GECKOTERMINAL_BASE_URL,
     GECKOTERMINAL_NETWORK,
-    GECKO_GRANULARITIES,
-    GECKO_AGGREGATES,
-    GECKO_MAX_CANDLES_PER_REQUEST,
-    SOLANA_TOKENS,
-    REQUEST_TIMEOUT,
     REQUEST_RETRY_ATTEMPTS,
     REQUEST_RETRY_DELAYS,
-    CANDLE_REQUEST_SLEEP,
+    REQUEST_TIMEOUT,
+    SOLANA_TOKENS,
 )
 from utils.logger import get_logger
-from utils.time_utils import now_utc, from_unix, to_unix
+from utils.time_utils import from_unix, now_utc, to_unix
 
 logger = get_logger(__name__)
 
@@ -49,10 +49,7 @@ def _parse_ohlcv_response(data: dict) -> pd.DataFrame:
     if not ohlcv_list:
         return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
-    df = pd.DataFrame(
-        ohlcv_list,
-        columns=["timestamp", "open", "high", "low", "close", "volume"]
-    )
+    df = pd.DataFrame(ohlcv_list, columns=["timestamp", "open", "high", "low", "close", "volume"])
     df["timestamp"] = df["timestamp"].apply(from_unix)
     for col in ["open", "high", "low", "close", "volume"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").astype(float)
@@ -72,11 +69,11 @@ def _fetch_chunk(
         f"/pools/{pool_address}/ohlcv/{timeframe}"
     )
     params = {
-        "aggregate":        aggregate,
+        "aggregate": aggregate,
         "before_timestamp": before_timestamp,
-        "limit":            min(limit, GECKO_MAX_CANDLES_PER_REQUEST),
-        "currency":         "usd",
-        "token":            "base",
+        "limit": min(limit, GECKO_MAX_CANDLES_PER_REQUEST),
+        "currency": "usd",
+        "token": "base",
     }
 
     data = _get(url, params=params)
@@ -94,12 +91,17 @@ def fetch_dex_candles(
     days_back: int = 30,
 ) -> pd.DataFrame:
     if symbol not in SOLANA_TOKENS:
-        raise ValueError(f"Unknown symbol '{symbol}'. Add it to SOLANA_TOKENS in config/settings.py")
+        raise ValueError(
+            f"Unknown symbol '{symbol}'. Add it to SOLANA_TOKENS in config/settings.py"
+        )
 
     if granularity not in GECKO_GRANULARITIES:
-        raise ValueError(f"Invalid granularity '{granularity}'. Choose from: {list(GECKO_GRANULARITIES.keys())}")
+        raise ValueError(
+            f"Invalid granularity '{granularity}'. Choose from: {list(GECKO_GRANULARITIES.keys())}"
+        )
 
     from data.dex_fetcher import get_pair_address
+
     pool_address = get_pair_address(symbol)
 
     if not pool_address:
@@ -109,10 +111,7 @@ def fetch_dex_candles(
     timeframe = GECKO_GRANULARITIES[granularity]
     aggregate = GECKO_AGGREGATES[granularity]
 
-    granularity_hours = {
-        "1m": 1/60, "5m": 5/60, "15m": 15/60,
-        "1h": 1, "4h": 4, "1d": 24
-    }
+    granularity_hours = {"1m": 1 / 60, "5m": 5 / 60, "15m": 15 / 60, "1h": 1, "4h": 4, "1d": 24}
     hours_per_candle = granularity_hours.get(granularity, 1)
     total_candles_needed = int((days_back * 24) / hours_per_candle)
 

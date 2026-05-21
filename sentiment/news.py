@@ -1,19 +1,21 @@
-import os
 import json
+import os
 import time
-import requests
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+import requests
 from textblob import TextBlob
-from utils.logger import get_logger
+
 from config.settings import (
-    NEWSAPI_BASE_URL,
     ASSET_NEWS_KEYWORDS,
     CACHE_DIR,
-    REQUEST_TIMEOUT,
+    NEWSAPI_BASE_URL,
     REQUEST_RETRY_ATTEMPTS,
     REQUEST_RETRY_DELAYS,
+    REQUEST_TIMEOUT,
 )
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -35,7 +37,7 @@ def _load_news_cache(asset: str) -> dict | None:
         with open(path) as f:
             entry = json.load(f)
         expires = datetime.fromisoformat(entry["expires_at"])
-        if datetime.now(timezone.utc) > expires:
+        if datetime.now(UTC) > expires:
             return None
         return entry["data"]
     except Exception:
@@ -43,7 +45,7 @@ def _load_news_cache(asset: str) -> dict | None:
 
 
 def _save_news_cache(asset: str, result: dict) -> None:
-    expiry = datetime.now(timezone.utc) + timedelta(minutes=NEWS_CACHE_TTL_MINUTES)
+    expiry = datetime.now(UTC) + timedelta(minutes=NEWS_CACHE_TTL_MINUTES)
     try:
         with open(_news_cache_path(asset), "w") as f:
             json.dump({"expires_at": expiry.isoformat(), "data": result}, f)
@@ -57,11 +59,11 @@ def _fetch_articles(query: str) -> list[dict]:
         return []
 
     params = {
-        "q":        query,
+        "q": query,
         "language": "en",
-        "sortBy":   "publishedAt",
+        "sortBy": "publishedAt",
         "pageSize": 20,
-        "apiKey":   api_key,
+        "apiKey": api_key,
     }
 
     last_error = None
@@ -74,7 +76,7 @@ def _fetch_articles(query: str) -> list[dict]:
             return response.json().get("articles", [])
         except Exception as e:
             last_error = e
-            logger.warning(f"NewsAPI request failed (attempt {attempt+1}): {e}")
+            logger.warning(f"NewsAPI request failed (attempt {attempt + 1}): {e}")
 
     logger.error(f"NewsAPI: all retries failed for '{query}': {last_error}")
     return []
@@ -115,14 +117,14 @@ def fetch_news_sentiment(asset: str) -> dict:
         _save_news_cache(asset, result)
         return result
 
-    now = datetime.now(timezone.utc)
-    weighted_sum  = 0.0
-    total_weight  = 0.0
+    now = datetime.now(UTC)
+    weighted_sum = 0.0
+    total_weight = 0.0
 
     for article in articles:
-        title       = article.get("title", "") or ""
+        title = article.get("title", "") or ""
         description = article.get("description", "") or ""
-        text        = (title + " " + description).strip()
+        text = (title + " " + description).strip()
 
         if not text:
             continue
@@ -136,7 +138,7 @@ def fetch_news_sentiment(asset: str) -> dict:
         try:
             published = datetime.fromisoformat(published_str.replace("Z", "+00:00"))
             hours_ago = (now - published).total_seconds() / 3600
-            weight = RECENCY_DECAY_PER_HOUR ** hours_ago
+            weight = RECENCY_DECAY_PER_HOUR**hours_ago
         except Exception:
             weight = 0.5
 
@@ -153,11 +155,11 @@ def fetch_news_sentiment(asset: str) -> dict:
     confidence = min(1.0, article_count / 10)
 
     result = {
-        "score":         round(score, 4),
+        "score": round(score, 4),
         "article_count": article_count,
-        "confidence":    round(confidence, 4),
-        "source":        "news",
-        "asset":         asset,
+        "confidence": round(confidence, 4),
+        "source": "news",
+        "asset": asset,
     }
     logger.info(f"News sentiment {asset}: {score:+.3f} ({article_count} articles)")
     _save_news_cache(asset, result)
@@ -166,10 +168,10 @@ def fetch_news_sentiment(asset: str) -> dict:
 
 def _null_result(asset: str, reason: str = "") -> dict:
     return {
-        "score":         0.0,
+        "score": 0.0,
         "article_count": 0,
-        "confidence":    0.0,
-        "source":        "news",
-        "asset":         asset,
-        "error":         reason,
+        "confidence": 0.0,
+        "source": "news",
+        "asset": asset,
+        "error": reason,
     }

@@ -108,10 +108,10 @@ HELIUS_API_KEY=
 NEWS_API_KEY=
 BIRDEYE_API_KEY=
 
-**Coinbase** — free at coinbase.com/developer-platform  
-**Helius** — free tier at helius.dev  
-**NewsAPI** — free tier at newsapi.org  
-**Birdeye** — free tier at bds.birdeye.so  
+**Coinbase** — free at coinbase.com/developer-platform
+**Helius** — free tier at helius.dev
+**NewsAPI** — free tier at newsapi.org
+**Birdeye** — free tier at bds.birdeye.so
 
 ---
 

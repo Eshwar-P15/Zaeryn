@@ -1,21 +1,21 @@
+import glob as _glob
+import json
 import os
 import sys
-import json
-import glob as _glob
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.settings import ALL_ASSETS, BACKTEST_REPORTS_DIR, MODEL_SAVE_DIR
-from data.storage import init_db, load_candles, get_db_stats, load_price_snapshots
+from config.settings import ALL_ASSETS, BACKTEST_REPORTS_DIR
+from data.storage import get_db_stats, init_db, load_candles
 
 
 @st.cache_data(ttl=300)
 def db_stats() -> dict:
     conn = init_db()
-    s    = get_db_stats(conn)
+    s = get_db_stats(conn)
     conn.close()
     return s
 
@@ -23,7 +23,7 @@ def db_stats() -> dict:
 @st.cache_data(ttl=300)
 def candles(asset: str, days: int = 90) -> pd.DataFrame:
     conn = init_db()
-    df   = load_candles(asset, "1h", days_back=days, conn=conn)
+    df = load_candles(asset, "1h", days_back=days, conn=conn)
     conn.close()
     return df
 
@@ -31,6 +31,7 @@ def candles(asset: str, days: int = 90) -> pd.DataFrame:
 @st.cache_data(ttl=1800)
 def model_health_all() -> dict:
     from models.trainer import evaluate_model_health
+
     return {a: evaluate_model_health(a) for a in ALL_ASSETS}
 
 
@@ -38,7 +39,9 @@ def model_health_all() -> dict:
 def sentiment_all() -> dict:
     """Load latest cached sentiment, ignoring TTL expiry so stale data still shows."""
     from pathlib import Path
+
     from config.settings import CACHE_DIR
+
     result = {}
     for a in ALL_ASSETS:
         safe = a.replace("-", "_").replace("/", "_")
@@ -46,6 +49,7 @@ def sentiment_all() -> dict:
         if path.exists():
             try:
                 import json as _json
+
                 with open(path) as f:
                     entry = _json.load(f)
                 data = entry.get("data", entry)
@@ -59,6 +63,7 @@ def sentiment_all() -> dict:
 @st.cache_data(ttl=300)
 def fear_greed() -> dict:
     from sentiment.fear_greed import fetch_fear_greed
+
     try:
         return fetch_fear_greed()
     except Exception:
@@ -87,17 +92,17 @@ def strategy_comparison() -> pd.DataFrame:
             continue
         key = (m.get("strategy", ""), m.get("asset", ""))
         seen[key] = {
-            "Strategy":      m.get("strategy", ""),
-            "Asset":         m.get("asset", ""),
-            "Return %":      m.get("total_return_pct", 0),
-            "Ann Return %":  m.get("annualized_return_pct", 0),
-            "Sharpe":        m.get("sharpe_ratio", 0),
-            "Sortino":       m.get("sortino_ratio", 0),
-            "Max DD %":      m.get("max_drawdown_pct", 0),
-            "Win Rate %":    m.get("win_rate_pct", 0),
-            "Trades":        m.get("total_trades", 0),
+            "Strategy": m.get("strategy", ""),
+            "Asset": m.get("asset", ""),
+            "Return %": m.get("total_return_pct", 0),
+            "Ann Return %": m.get("annualized_return_pct", 0),
+            "Sharpe": m.get("sharpe_ratio", 0),
+            "Sortino": m.get("sortino_ratio", 0),
+            "Max DD %": m.get("max_drawdown_pct", 0),
+            "Win Rate %": m.get("win_rate_pct", 0),
+            "Trades": m.get("total_trades", 0),
             "Profit Factor": m.get("profit_factor", 0),
-            "W/L Ratio":     m.get("win_loss_ratio", 1.5),
+            "W/L Ratio": m.get("win_loss_ratio", 1.5),
         }
     if not seen:
         return pd.DataFrame()
@@ -125,7 +130,9 @@ def equity_curves_for(asset: str) -> dict:
 @st.cache_data(ttl=3600)
 def feature_importances(asset: str) -> dict:
     import joblib
+
     from models.volatility import VolatilityPredictor
+
     path = VolatilityPredictor.model_path(asset)
     if not os.path.exists(path):
         return {}

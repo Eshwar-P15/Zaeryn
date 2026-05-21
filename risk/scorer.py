@@ -1,28 +1,27 @@
 import os
-import ta
-import numpy as np
-import pandas as pd
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from utils.logger import get_logger
+import pandas as pd
+import ta
+
 from config.settings import (
     ALL_ASSETS,
-    RISK_WEIGHTS,
-    RISK_THRESHOLDS,
-    RECOMMEND_TRADE,
+    FEATURE_WINDOWS,
     RECOMMEND_HOLD,
     RECOMMEND_REDUCE,
-    VOL_RISK_CAP,
+    RECOMMEND_TRADE,
+    RISK_THRESHOLDS,
+    RISK_WEIGHTS,
     RSI_MIN_CANDLES,
-    FEATURE_WINDOWS,
-    MODEL_HORIZON,
+    VOL_RISK_CAP,
 )
-from models.volatility import VolatilityPredictor
-from models.trend import TrendClassifier
-from sentiment.cache import load_cached_sentiment, get_or_fetch_sentiment
-from sentiment.fear_greed import fetch_fear_greed
-from data.storage import load_candles, init_db
 from data.cleaner import clean_ohlcv
+from data.storage import init_db, load_candles
+from models.trend import TrendClassifier
+from models.volatility import VolatilityPredictor
+from sentiment.cache import get_or_fetch_sentiment, load_cached_sentiment
+from sentiment.fear_greed import fetch_fear_greed
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -82,7 +81,7 @@ def _compute_volatility_component(asset: str, candles: pd.DataFrame) -> tuple[fl
         model = VolatilityPredictor()
         model.load(path)
         predicted_vol = model.predict(candles)
-        vol_risk      = min(predicted_vol / VOL_RISK_CAP, 1.0)
+        vol_risk = min(predicted_vol / VOL_RISK_CAP, 1.0)
         return float(vol_risk), 1.0
     except Exception as e:
         logger.warning(f"[{asset}] Volatility prediction failed: {e}")
@@ -105,7 +104,7 @@ def _compute_trend_component(asset: str, candles: pd.DataFrame) -> tuple[float |
         return None, 0.0
 
     try:
-        model  = TrendClassifier()
+        model = TrendClassifier()
         model.load(path)
         result = model.predict_proba(candles)
         trend_confidence = float(result.get("confidence", 0.0))
@@ -134,7 +133,7 @@ def _compute_sentiment_component(asset: str) -> tuple[float, float]:
     if data is None:
         return 0.5, 0.0
 
-    score      = float(data.get("score", 0.0))
+    score = float(data.get("score", 0.0))
     confidence = float(data.get("confidence", 0.0))
     sentiment_risk = max(0.0, min(1.0, (1.0 - score) / 2.0))
     return sentiment_risk, confidence
@@ -160,7 +159,7 @@ def _compute_regime_component() -> tuple[float, float]:
     Both extreme fear AND extreme greed increase risk.
     """
     try:
-        fg   = _get_fear_greed()
+        fg = _get_fear_greed()
         norm = float(fg.get("normalized", 0.0))
         return abs(norm), 1.0
     except Exception as e:
@@ -168,17 +167,13 @@ def _compute_regime_component() -> tuple[float, float]:
         return 0.0, 0.0
 
 
-def _redistribute_weights(
-    components: dict[str, tuple[float | None, float]]
-) -> dict[str, float]:
+def _redistribute_weights(components: dict[str, tuple[float | None, float]]) -> dict[str, float]:
     """
     Rule 2: redistribute weight from unavailable components proportionally
     among available ones. Returns {name: effective_weight} summing to 1.0.
     """
     available = {
-        name: RISK_WEIGHTS[name]
-        for name, (value, _) in components.items()
-        if value is not None
+        name: RISK_WEIGHTS[name] for name, (value, _) in components.items() if value is not None
     }
 
     if not available:
@@ -262,15 +257,15 @@ def compute_risk_score(
         trend_conf = 0.0
 
     sent_risk, sent_conf = _compute_sentiment_component(asset)
-    mom_risk,  mom_conf  = _compute_momentum_component(candles)
-    reg_risk,  reg_conf  = _compute_regime_component()
+    mom_risk, mom_conf = _compute_momentum_component(candles)
+    reg_risk, reg_conf = _compute_regime_component()
 
     components_raw = {
-        "volatility":        (vol_risk,   vol_conf),
+        "volatility": (vol_risk, vol_conf),
         "trend_uncertainty": (trend_risk, trend_conf),
-        "sentiment":         (sent_risk,  sent_conf),
-        "price_momentum":    (mom_risk,   mom_conf),
-        "market_regime":     (reg_risk,   reg_conf),
+        "sentiment": (sent_risk, sent_conf),
+        "price_momentum": (mom_risk, mom_conf),
+        "market_regime": (reg_risk, reg_conf),
     }
 
     effective_weights = _redistribute_weights(components_raw)
@@ -284,46 +279,46 @@ def compute_risk_score(
     final_score = max(0.0, min(100.0, weighted_sum * 100.0))
 
     rsi_val = _extract_rsi(candles) if candles is not None and not candles.empty else None
-    fg_val  = _fg_cache.get("normalized") if _fg_cache else None
+    fg_val = _fg_cache.get("normalized") if _fg_cache else None
 
     components_detail = {
         "volatility": {
-            "risk":    vol_risk,
-            "weight":  effective_weights.get("volatility", 0.0),
+            "risk": vol_risk,
+            "weight": effective_weights.get("volatility", 0.0),
             "raw_vol": float(vol_risk * VOL_RISK_CAP) if vol_risk is not None else None,
         },
         "trend_uncertainty": {
-            "risk":       trend_risk,
-            "weight":     effective_weights.get("trend_uncertainty", 0.0),
-            "direction":  trend_data.get("direction")  if trend_data else None,
+            "risk": trend_risk,
+            "weight": effective_weights.get("trend_uncertainty", 0.0),
+            "direction": trend_data.get("direction") if trend_data else None,
             "confidence": trend_data.get("confidence") if trend_data else None,
         },
         "sentiment": {
-            "risk":       sent_risk,
-            "weight":     effective_weights.get("sentiment", 0.0),
+            "risk": sent_risk,
+            "weight": effective_weights.get("sentiment", 0.0),
             "confidence": sent_conf,
         },
         "price_momentum": {
-            "risk":   mom_risk,
+            "risk": mom_risk,
             "weight": effective_weights.get("price_momentum", 0.0),
-            "rsi":    rsi_val,
+            "rsi": rsi_val,
         },
         "market_regime": {
-            "risk":       reg_risk,
-            "weight":     effective_weights.get("market_regime", 0.0),
+            "risk": reg_risk,
+            "weight": effective_weights.get("market_regime", 0.0),
             "fear_greed": fg_val,
         },
     }
 
     result = {
-        "asset":            asset,
-        "score":            round(final_score, 2),
-        "label":            risk_label(final_score),
-        "recommendation":   recommendation(final_score, trend_data),
-        "components":       components_detail,
+        "asset": asset,
+        "score": round(final_score, 2),
+        "label": risk_label(final_score),
+        "recommendation": recommendation(final_score, trend_data),
+        "components": components_detail,
         "models_available": vol_risk is not None,
-        "trend":            trend_data,
-        "timestamp":        datetime.now(timezone.utc),
+        "trend": trend_data,
+        "timestamp": datetime.now(UTC),
     }
 
     logger.info(

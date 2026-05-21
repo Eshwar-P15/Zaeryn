@@ -1,21 +1,24 @@
-import sys
+# LEGACY (Phase 1 validation script). Superseded by scripts/fetch_history.py +
+# scripts/fetch_birdeye_history.py. Retained for archival reference only — do
+# not rely on it for new pipeline work.
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.settings import ASSETS
-from utils.logger import get_logger
+from config.settings import ACTIVE_ASSETS
+from data.cleaner import clean_ohlcv, detect_anomalies, normalize_price_data, validate_ohlcv
 from data.historical import fetch_all_assets
-from data.cleaner import clean_ohlcv, validate_ohlcv, detect_anomalies, normalize_price_data
-from data.storage import init_db, upsert_candles, load_candles, get_db_stats
+from data.storage import get_db_stats, init_db, load_candles, upsert_candles
+from utils.logger import get_logger
 
 logger = get_logger("init_data")
 
 
 def main():
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("  ZAERYN - Phase 1 Data Pipeline Validation")
-    print("="*60 + "\n")
+    print("=" * 60 + "\n")
 
     print("[ 1 / 5 ] Initializing database...")
     conn = init_db()
@@ -29,7 +32,7 @@ def main():
         print("ERROR: No data returned from API. Check internet connection.")
         sys.exit(1)
 
-    print(f"\n          OK Got data for {len(raw_data)}/{len(ASSETS)} assets\n")
+    print(f"\n          OK Got data for {len(raw_data)}/{len(ACTIVE_ASSETS)} assets\n")
 
     print("[ 3 / 5 ] Cleaning, validating, and storing each asset...\n")
     for asset, df in raw_data.items():
@@ -43,7 +46,7 @@ def main():
         if not is_valid:
             print(f"    VALIDATION FAILED: {errors}")
             continue
-        print(f"    Validated: OK")
+        print("    Validated: OK")
 
         cleaned = detect_anomalies(cleaned)
         anomaly_count = cleaned["is_anomaly"].sum()
@@ -62,7 +65,9 @@ def main():
         sys.exit(1)
 
     print("  First 5 rows of BTC-USD:")
-    print(btc[["timestamp", "open", "high", "low", "close", "volume"]].head().to_string(index=False))
+    print(
+        btc[["timestamp", "open", "high", "low", "close", "volume"]].head().to_string(index=False)
+    )
     print()
 
     print("[ 5 / 5 ] Database summary:\n")
@@ -73,18 +78,20 @@ def main():
         sys.exit(1)
 
     print(f"  {'Asset':<12} {'Granularity':<14} {'Candles':>8}  {'From':<18}  {'To'}")
-    print("  " + "-"*70)
+    print("  " + "-" * 70)
     for asset in sorted(stats.keys()):
         for gran, info in sorted(stats[asset].items()):
-            print(f"  {asset:<12} {gran:<14} {info['count']:>8}  {info['oldest']:<18}  {info['newest']}")
+            print(
+                f"  {asset:<12} {gran:<14} {info['count']:>8}  {info['oldest']:<18}  {info['newest']}"
+            )
 
     print()
     conn.close()
 
-    print("="*60)
+    print("=" * 60)
     print("  OK Phase 1 validation complete!")
     print("  Ready to commit: git add . && git commit -m 'v0.1.0-data-pipeline'")
-    print("="*60 + "\n")
+    print("=" * 60 + "\n")
 
 
 if __name__ == "__main__":

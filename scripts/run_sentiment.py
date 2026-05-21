@@ -1,12 +1,15 @@
-import sys
 import os
+import sys
 from pathlib import Path
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import nltk
+
 for corpus in ["punkt", "punkt_tab"]:
     try:
         nltk.data.find(f"tokenizers/{corpus}")
@@ -15,29 +18,31 @@ for corpus in ["punkt", "punkt_tab"]:
         nltk.download(corpus, quiet=True)
 
 from config.settings import ALL_ASSETS, SOLANA_TOKENS
-from utils.logger import get_logger
-from sentiment.fear_greed    import fetch_fear_greed
 from sentiment.dex_sentiment import fetch_dex_sentiment
-from sentiment.onchain       import fetch_onchain_sentiment
-from sentiment.news          import fetch_news_sentiment
-from sentiment.scorer        import compute_sentiment_score, score_all_assets
+from sentiment.fear_greed import fetch_fear_greed
+from sentiment.news import fetch_news_sentiment
+from sentiment.onchain import fetch_onchain_sentiment
+from sentiment.scorer import score_all_assets
+from utils.logger import get_logger
 
 logger = get_logger("run_sentiment")
 
 
 def main():
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("  ZAERYN - Phase 2 Sentiment Engine Validation")
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
     # --- 1. Fear & Greed ---
     print("[ 1 / 5 ] Fear & Greed Index...")
     fg = fetch_fear_greed()
     status = "OK" if "error" not in fg else "WARN"
-    print(f"          {status}  {fg['value']}/100 | {fg['label']} | normalized={fg['normalized']:+.3f}\n")
+    print(
+        f"          {status}  {fg['value']}/100 | {fg['label']} | normalized={fg['normalized']:+.3f}\n"
+    )
 
     # --- 2. DEX sentiment ---
-    print(f"[ 2 / 5 ] DEX buy/sell ratios (Solana tokens)...\n")
+    print("[ 2 / 5 ] DEX buy/sell ratios (Solana tokens)...\n")
     for asset in SOLANA_TOKENS:
         dx = fetch_dex_sentiment(asset)
         ok = "OK  " if dx.get("confidence", 0) > 0 else "SKIP"
@@ -50,7 +55,7 @@ def main():
         )
 
     # --- 3. On-chain ---
-    print(f"\n[ 3 / 5 ] Helius on-chain signals (Solana tokens)...\n")
+    print("\n[ 3 / 5 ] Helius on-chain signals (Solana tokens)...\n")
     for asset in SOLANA_TOKENS:
         oc = fetch_onchain_sentiment(asset)
         ok = "OK  " if oc.get("confidence", 0) > 0 else "SKIP"
@@ -62,7 +67,7 @@ def main():
         )
 
     # --- 4. News ---
-    print(f"\n[ 4 / 5 ] NewsAPI headlines (first 3 assets)...\n")
+    print("\n[ 4 / 5 ] NewsAPI headlines (first 3 assets)...\n")
     for asset in ALL_ASSETS[:3]:
         nw = fetch_news_sentiment(asset)
         ok = "OK  " if nw.get("confidence", 0) > 0 else "SKIP"
@@ -74,9 +79,9 @@ def main():
         )
 
     # --- 5. Full composite ---
-    print(f"\n[ 5 / 5 ] Full composite scores (Twitter disabled)...\n")
+    print("\n[ 5 / 5 ] Full composite scores (Twitter disabled)...\n")
     print(f"  {'Asset':<12} {'Score':>8}  {'Label':<15}  {'Conf':>6}  Components")
-    print("  " + "-"*78)
+    print("  " + "-" * 78)
 
     results = score_all_assets(include_twitter=False)
     for asset, result in results.items():
@@ -95,15 +100,17 @@ def main():
         )
 
     print()
-    print("="*70)
+    print("=" * 70)
     print("  Phase 2 validation complete!")
     print()
     print("  To test Twitter (when credentials confirmed):")
-    print("  python -c \"from sentiment.twitter_scraper import fetch_twitter_sentiment; print(fetch_twitter_sentiment('SOL-USD'))\"")
+    print(
+        "  python -c \"from sentiment.twitter_scraper import fetch_twitter_sentiment; print(fetch_twitter_sentiment('SOL-USD'))\""
+    )
     print()
     print("  Ready to commit:")
     print("  git add . && git commit -m 'v0.2.0-sentiment-engine'")
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
 
 if __name__ == "__main__":

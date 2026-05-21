@@ -1,21 +1,22 @@
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.settings import SOLANA_TOKENS
-from utils.logger import get_logger
-from data.dex_fetcher import fetch_token_info, fetch_all_dex_prices
+from data.cleaner import clean_ohlcv, detect_anomalies, normalize_price_data, validate_ohlcv
+from data.dex_fetcher import fetch_all_dex_prices, fetch_token_info
 from data.gecko_fetcher import fetch_dex_candles
-from data.cleaner import clean_ohlcv, validate_ohlcv, detect_anomalies, normalize_price_data
-from data.storage import init_db, upsert_candles, load_candles, get_db_stats
+from data.storage import get_db_stats, init_db, upsert_candles
+from utils.logger import get_logger
 
 logger = get_logger("init_dex_data")
 
 
 def main():
-    print("\n" + "="*65)
+    print("\n" + "=" * 65)
     print("  ZAERYN - Phase 1.5 DEX Data Pipeline Validation")
-    print("="*65 + "\n")
+    print("=" * 65 + "\n")
 
     print("[ 1 / 5 ] Initializing database...")
     conn = init_db()
@@ -45,7 +46,7 @@ def main():
         else:
             print(f"  FAIL {symbol:<8} - failed to fetch")
 
-    print(f"\n[ 4 / 5 ] Fetching 7 days of 1h OHLCV candles for all tokens...")
+    print("\n[ 4 / 5 ] Fetching 7 days of 1h OHLCV candles for all tokens...")
     print("          (Multiple API calls - may take 30-60 seconds)\n")
 
     success_count = 0
@@ -55,7 +56,7 @@ def main():
             df = fetch_dex_candles(symbol, granularity="1h", days_back=7)
 
             if df.empty:
-                print(f"    FAIL No data returned\n")
+                print("    FAIL No data returned\n")
                 continue
 
             cleaned = clean_ohlcv(df)
@@ -71,7 +72,9 @@ def main():
             written = upsert_candles(symbol, "1h", cleaned, conn)
             anomaly_count = cleaned["is_anomaly"].sum()
 
-            print(f"    OK  {len(cleaned)} candles  |  {anomaly_count} anomalies  |  {written} rows stored\n")
+            print(
+                f"    OK  {len(cleaned)} candles  |  {anomaly_count} anomalies  |  {written} rows stored\n"
+            )
             success_count += 1
 
         except Exception as e:
@@ -87,21 +90,23 @@ def main():
         sys.exit(1)
 
     print(f"  {'Token':<10} {'Gran':<8} {'Candles':>8}  {'From':<18}  {'To'}")
-    print("  " + "-"*65)
+    print("  " + "-" * 65)
     for asset in sorted(dex_stats.keys()):
         for gran, info in sorted(dex_stats[asset].items()):
-            print(f"  {asset:<10} {gran:<8} {info['count']:>8}  {info['oldest']:<18}  {info['newest']}")
+            print(
+                f"  {asset:<10} {gran:<8} {info['count']:>8}  {info['oldest']:<18}  {info['newest']}"
+            )
 
     conn.close()
 
     print()
-    print("="*65)
+    print("=" * 65)
     if success_count == len(SOLANA_TOKENS):
         print("  OK All DEX tokens loaded successfully!")
     else:
         print(f"  WARN {success_count}/{len(SOLANA_TOKENS)} tokens loaded - check logs above")
     print("  Ready to commit: git add . && git commit -m 'v0.1.5-dex-integration'")
-    print("="*65 + "\n")
+    print("=" * 65 + "\n")
 
 
 if __name__ == "__main__":

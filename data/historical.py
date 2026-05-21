@@ -1,22 +1,22 @@
 import time
-import requests
-import pandas as pd
 from datetime import datetime
 
+import pandas as pd
+import requests
+
 from config.settings import (
-    COINBASE_EXCHANGE_URL,
-    GRANULARITIES,
-    DEFAULT_GRANULARITY,
-    HISTORY_DAYS,
-    ASSET_SOURCE,
     ALL_ASSETS,
-    REQUEST_TIMEOUT,
+    ASSET_SOURCE,
+    CANDLE_REQUEST_SLEEP,
+    COINBASE_EXCHANGE_URL,
+    DEFAULT_GRANULARITY,
+    GRANULARITIES,
     REQUEST_RETRY_ATTEMPTS,
     REQUEST_RETRY_DELAYS,
-    CANDLE_REQUEST_SLEEP,
+    REQUEST_TIMEOUT,
 )
 from utils.logger import get_logger
-from utils.time_utils import date_range, chunk_date_range, to_iso, from_unix
+from utils.time_utils import chunk_date_range, date_range, from_unix, to_iso
 
 logger = get_logger(__name__)
 
@@ -38,7 +38,9 @@ def _fetch_chunk(
     for attempt in range(REQUEST_RETRY_ATTEMPTS):
         if attempt > 0:
             wait = REQUEST_RETRY_DELAYS[attempt - 1]
-            logger.debug(f"Retry {attempt}/{REQUEST_RETRY_ATTEMPTS-1} for {product_id} chunk, waiting {wait}s")
+            logger.debug(
+                f"Retry {attempt}/{REQUEST_RETRY_ATTEMPTS - 1} for {product_id} chunk, waiting {wait}s"
+            )
             time.sleep(wait)
 
         try:
@@ -47,7 +49,9 @@ def _fetch_chunk(
             raw = response.json()
 
             if not raw:
-                logger.debug(f"Empty candle response for {product_id} chunk {to_iso(start)} -> {to_iso(end)}")
+                logger.debug(
+                    f"Empty candle response for {product_id} chunk {to_iso(start)} -> {to_iso(end)}"
+                )
                 return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
             # Coinbase format: [unix_timestamp, low, high, open, close, volume]
@@ -55,7 +59,9 @@ def _fetch_chunk(
             df["timestamp"] = df["timestamp"].apply(from_unix)
             df = df[["timestamp", "open", "high", "low", "close", "volume"]]
 
-            logger.debug(f"Fetched {len(df)} candles for {product_id} [{to_iso(start)} -> {to_iso(end)}]")
+            logger.debug(
+                f"Fetched {len(df)} candles for {product_id} [{to_iso(start)} -> {to_iso(end)}]"
+            )
             return df
 
         except requests.exceptions.RequestException as e:
@@ -73,13 +79,17 @@ def _fetch_from_coinbase(
     days_back: int,
 ) -> pd.DataFrame:
     if granularity not in GRANULARITIES:
-        raise ValueError(f"Invalid granularity '{granularity}'. Choose from: {list(GRANULARITIES.keys())}")
+        raise ValueError(
+            f"Invalid granularity '{granularity}'. Choose from: {list(GRANULARITIES.keys())}"
+        )
 
     granularity_seconds = GRANULARITIES[granularity]
     start, end = date_range(days_back)
     chunks = chunk_date_range(start, end, granularity)
 
-    logger.info(f"Fetching {days_back}d of {granularity} candles for {product_id} in {len(chunks)} chunks...")
+    logger.info(
+        f"Fetching {days_back}d of {granularity} candles for {product_id} in {len(chunks)} chunks..."
+    )
 
     all_chunks = []
     for i, (chunk_start, chunk_end) in enumerate(chunks):
@@ -88,7 +98,7 @@ def _fetch_from_coinbase(
             if not chunk_df.empty:
                 all_chunks.append(chunk_df)
         except RuntimeError as e:
-            logger.error(f"Failed chunk {i+1}/{len(chunks)} for {product_id}: {e}")
+            logger.error(f"Failed chunk {i + 1}/{len(chunks)} for {product_id}: {e}")
 
         if i < len(chunks) - 1:
             time.sleep(CANDLE_REQUEST_SLEEP)
@@ -111,6 +121,7 @@ def _fetch_from_dex(
     days_back: int,
 ) -> pd.DataFrame:
     from data.gecko_fetcher import fetch_dex_candles
+
     return fetch_dex_candles(symbol, granularity=granularity, days_back=days_back)
 
 
@@ -132,8 +143,9 @@ def fetch_candles(
     elif source == "dex":
         return _fetch_from_dex(symbol, granularity, days_back)
     elif source == "birdeye":
-        from data.birdeye_fetcher import fetch_birdeye_ohlcv
         from config.settings import SOLANA_TOKENS
+        from data.birdeye_fetcher import fetch_birdeye_ohlcv
+
         mint_address = SOLANA_TOKENS.get(symbol)
         if not mint_address:
             logger.error(f"fetch_candles [{symbol}]: no mint address in SOLANA_TOKENS")
@@ -147,6 +159,7 @@ def fetch_candles(
         return result if result is not None else pd.DataFrame()
     elif source == "yfinance":
         from data.yfinance_fetcher import fetch_yfinance_ohlcv
+
         return fetch_yfinance_ohlcv(symbol, granularity=granularity, days_back=days_back)
     else:
         raise ValueError(f"Unknown data source '{source}' for symbol '{symbol}'")

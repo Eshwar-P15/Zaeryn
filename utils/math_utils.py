@@ -1,5 +1,4 @@
 import math
-from typing import List
 
 
 def pct_change(old: float, new: float) -> float:
@@ -8,7 +7,7 @@ def pct_change(old: float, new: float) -> float:
     return (new - old) / old * 100
 
 
-def rolling_mean(values: List[float], window: int) -> List[float]:
+def rolling_mean(values: list[float], window: int) -> list[float]:
     result = []
     for i in range(len(values)):
         if i < window - 1:
@@ -19,7 +18,7 @@ def rolling_mean(values: List[float], window: int) -> List[float]:
     return result
 
 
-def rolling_std(values: List[float], window: int) -> List[float]:
+def rolling_std(values: list[float], window: int) -> list[float]:
     result = []
     for i in range(len(values)):
         if i < window - 1:
@@ -32,7 +31,7 @@ def rolling_std(values: List[float], window: int) -> List[float]:
     return result
 
 
-def normalize_minmax(values: List[float]) -> List[float]:
+def normalize_minmax(values: list[float]) -> list[float]:
     valid = [v for v in values if not math.isnan(v)]
     if not valid:
         return [float("nan")] * len(values)

@@ -1,15 +1,15 @@
 import time
+
 import requests
-from typing import Optional
 
 from config.settings import (
     DEXSCREENER_BASE_URL,
-    SOLANA_TOKENS,
     MIN_LIQUIDITY_USD,
     MIN_VOLUME_24H_USD,
-    REQUEST_TIMEOUT,
     REQUEST_RETRY_ATTEMPTS,
     REQUEST_RETRY_DELAYS,
+    REQUEST_TIMEOUT,
+    SOLANA_TOKENS,
 )
 from utils.logger import get_logger
 
@@ -35,7 +35,7 @@ def _get(url: str, params: dict = None) -> dict:
     raise RuntimeError(f"All retries exhausted for {url}. Last error: {last_error}")
 
 
-def _select_best_pair(pairs: list[dict], symbol: str) -> Optional[dict]:
+def _select_best_pair(pairs: list[dict], symbol: str) -> dict | None:
     solana_pairs = [p for p in pairs if p.get("chainId") == "solana"]
 
     if not solana_pairs:
@@ -63,9 +63,11 @@ def _select_best_pair(pairs: list[dict], symbol: str) -> Optional[dict]:
     return qualifying[0]
 
 
-def fetch_token_info(symbol: str) -> Optional[dict]:
+def fetch_token_info(symbol: str) -> dict | None:
     if symbol not in SOLANA_TOKENS:
-        raise ValueError(f"Unknown symbol '{symbol}'. Add it to SOLANA_TOKENS in config/settings.py")
+        raise ValueError(
+            f"Unknown symbol '{symbol}'. Add it to SOLANA_TOKENS in config/settings.py"
+        )
 
     mint_address = SOLANA_TOKENS[symbol]
     url = f"{DEXSCREENER_BASE_URL}/tokens/{mint_address}"
@@ -89,17 +91,17 @@ def fetch_token_info(symbol: str) -> Optional[dict]:
     price_str = best_pair.get("priceUsd", "0") or "0"
 
     info = {
-        "symbol":           symbol,
-        "name":             base_token.get("name", symbol),
-        "mint_address":     mint_address,
-        "pair_address":     best_pair.get("pairAddress", ""),
-        "dex":              best_pair.get("dexId", "unknown"),
-        "price_usd":        float(price_str),
+        "symbol": symbol,
+        "name": base_token.get("name", symbol),
+        "mint_address": mint_address,
+        "pair_address": best_pair.get("pairAddress", ""),
+        "dex": best_pair.get("dexId", "unknown"),
+        "price_usd": float(price_str),
         "price_change_24h": best_pair.get("priceChange", {}).get("h24", 0.0) or 0.0,
-        "volume_24h":       best_pair.get("volume", {}).get("h24", 0.0) or 0.0,
-        "liquidity_usd":    best_pair.get("liquidity", {}).get("usd", 0.0) or 0.0,
-        "market_cap":       best_pair.get("marketCap", 0.0) or 0.0,
-        "below_threshold":  best_pair.get("_below_threshold", False),
+        "volume_24h": best_pair.get("volume", {}).get("h24", 0.0) or 0.0,
+        "liquidity_usd": best_pair.get("liquidity", {}).get("usd", 0.0) or 0.0,
+        "market_cap": best_pair.get("marketCap", 0.0) or 0.0,
+        "below_threshold": best_pair.get("_below_threshold", False),
     }
 
     if info["below_threshold"]:
@@ -112,7 +114,7 @@ def fetch_token_info(symbol: str) -> Optional[dict]:
     return info
 
 
-def fetch_dex_price(symbol: str) -> Optional[float]:
+def fetch_dex_price(symbol: str) -> float | None:
     info = fetch_token_info(symbol)
     if info is None:
         return None
@@ -135,7 +137,7 @@ def fetch_all_dex_prices() -> dict[str, float]:
     return prices
 
 
-def get_pair_address(symbol: str) -> Optional[str]:
+def get_pair_address(symbol: str) -> str | None:
     if symbol in _pair_address_cache:
         return _pair_address_cache[symbol]
 
@@ -162,14 +164,16 @@ def search_token(query: str) -> list[dict]:
     results = []
     for pair in pairs[:10]:
         base = pair.get("baseToken", {})
-        results.append({
-            "symbol":        base.get("symbol", ""),
-            "name":          base.get("name", ""),
-            "chain":         pair.get("chainId", ""),
-            "price_usd":     float(pair.get("priceUsd", 0) or 0),
-            "volume_24h":    pair.get("volume", {}).get("h24", 0) or 0,
-            "liquidity_usd": pair.get("liquidity", {}).get("usd", 0) or 0,
-            "pair_address":  pair.get("pairAddress", ""),
-            "dex":           pair.get("dexId", ""),
-        })
+        results.append(
+            {
+                "symbol": base.get("symbol", ""),
+                "name": base.get("name", ""),
+                "chain": pair.get("chainId", ""),
+                "price_usd": float(pair.get("priceUsd", 0) or 0),
+                "volume_24h": pair.get("volume", {}).get("h24", 0) or 0,
+                "liquidity_usd": pair.get("liquidity", {}).get("usd", 0) or 0,
+                "pair_address": pair.get("pairAddress", ""),
+                "dex": pair.get("dexId", ""),
+            }
+        )
     return results

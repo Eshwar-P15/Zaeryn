@@ -1,18 +1,19 @@
-import os
 import logging
-import numpy as np
-from datetime import datetime, timezone
+import os
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
-from utils.logger import get_logger
+import numpy as np
+
 from config.settings import (
-    LOGS_DIR,
-    ALERTS_LOG_FILE,
+    ALERT_PRICE_DROP_PCT,
     ALERT_RISK_EXTREME,
     ALERT_SENTIMENT_CRASH,
     ALERT_VOL_SPIKE_FACTOR,
-    ALERT_PRICE_DROP_PCT,
+    ALERTS_LOG_FILE,
+    LOGS_DIR,
 )
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -31,10 +32,12 @@ def _get_alert_logger() -> logging.Logger:
         al.setLevel(logging.INFO)
         fh = logging.FileHandler(ALERTS_LOG_FILE, encoding="utf-8")
         fh.setLevel(logging.INFO)
-        fh.setFormatter(logging.Formatter(
-            "[%(asctime)s] %(levelname)-8s %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        ))
+        fh.setFormatter(
+            logging.Formatter(
+                "[%(asctime)s] %(levelname)-8s %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
         al.addHandler(fh)
         al.propagate = False
 
@@ -44,22 +47,22 @@ def _get_alert_logger() -> logging.Logger:
 
 @dataclass
 class Alert:
-    asset:     str
-    type:      str
-    severity:  str
-    value:     float
+    asset: str
+    type: str
+    severity: str
+    value: float
     threshold: float
-    message:   str
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    message: str
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict:
         return {
-            "asset":     self.asset,
-            "type":      self.type,
-            "severity":  self.severity,
-            "value":     round(self.value, 4),
+            "asset": self.asset,
+            "type": self.type,
+            "severity": self.severity,
+            "value": round(self.value, 4),
             "threshold": self.threshold,
-            "message":   self.message,
+            "message": self.message,
             "timestamp": self.timestamp.isoformat(),
         }
 
@@ -67,7 +70,7 @@ class Alert:
         return (
             f"{self.severity:<8} {self.asset:<10} "
             f"{self.type:<20} value={self.value:.4f} "
-            f"threshold={self.threshold}  \"{self.message}\""
+            f'threshold={self.threshold}  "{self.message}"'
         )
 
 
@@ -117,8 +120,7 @@ def check_alerts(
             value=sentiment_score,
             threshold=ALERT_SENTIMENT_CRASH,
             message=(
-                f"Sentiment {sentiment_score:.3f} below crash threshold "
-                f"{ALERT_SENTIMENT_CRASH}"
+                f"Sentiment {sentiment_score:.3f} below crash threshold {ALERT_SENTIMENT_CRASH}"
             ),
         )
         log_alert(alert)
@@ -128,9 +130,7 @@ def check_alerts(
     raw_vol = risk_data.get("components", {}).get("volatility", {}).get("raw_vol")
     if raw_vol is not None and candles is not None and not candles.empty and len(candles) >= 30:
         hist_log_returns = (
-            candles["close"].pct_change().apply(
-                lambda x: np.log1p(x) if x > -1 else 0
-            )
+            candles["close"].pct_change().apply(lambda x: np.log1p(x) if x > -1 else 0)
         )
         avg_vol_30d = float(hist_log_returns.rolling(30).std().dropna().mean()) * np.sqrt(8760)
         if avg_vol_30d > 0 and raw_vol > avg_vol_30d * ALERT_VOL_SPIKE_FACTOR:
@@ -142,7 +142,7 @@ def check_alerts(
                 threshold=avg_vol_30d * ALERT_VOL_SPIKE_FACTOR,
                 message=(
                     f"Predicted vol {raw_vol:.3f} is "
-                    f"{raw_vol/avg_vol_30d:.1f}x the 30d average ({avg_vol_30d:.3f})"
+                    f"{raw_vol / avg_vol_30d:.1f}x the 30d average ({avg_vol_30d:.3f})"
                 ),
             )
             log_alert(alert)
@@ -150,7 +150,7 @@ def check_alerts(
 
     # Alert 4: Price drop in last hour
     if candles is not None and not candles.empty and len(candles) >= 2:
-        latest_close   = float(candles["close"].iloc[-1])
+        latest_close = float(candles["close"].iloc[-1])
         hour_ago_close = float(candles["close"].iloc[-2])
         if hour_ago_close > 0:
             pct_change = ((latest_close - hour_ago_close) / hour_ago_close) * 100
@@ -182,7 +182,7 @@ def check_all_assets(risk_results: dict, candles_map: dict = None) -> dict[str, 
 
     for asset, risk_data in risk_results.items():
         candles = (candles_map or {}).get(asset)
-        alerts  = check_alerts(asset, risk_data, candles=candles)
+        alerts = check_alerts(asset, risk_data, candles=candles)
         all_alerts[asset] = alerts
         total += len(alerts)
 

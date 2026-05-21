@@ -1,18 +1,19 @@
-import yfinance as yf
-import pandas as pd
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from config.settings import YFINANCE_TICKER_MAP, ASSET_CLASS, YFINANCE_MAX_DAYS_1H
+import pandas as pd
+import yfinance as yf
+
+from config.settings import ASSET_CLASS, YFINANCE_MAX_DAYS_1H, YFINANCE_TICKER_MAP
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 INTERVAL_MAP = {
-    "1m":  "1m",
-    "5m":  "5m",
+    "1m": "1m",
+    "5m": "5m",
     "15m": "15m",
-    "1h":  "1h",
-    "1d":  "1d",
+    "1h": "1h",
+    "1d": "1d",
 }
 
 
@@ -37,7 +38,7 @@ def fetch_yfinance_ohlcv(
     if interval == "1h":
         days_back = min(days_back, YFINANCE_MAX_DAYS_1H)
 
-    end = datetime.now(timezone.utc)
+    end = datetime.now(UTC)
     start = end - timedelta(days=days_back)
 
     try:
@@ -61,10 +62,15 @@ def fetch_yfinance_ohlcv(
     if isinstance(raw.columns, pd.MultiIndex):
         raw.columns = raw.columns.get_level_values(0)
 
-    raw = raw.rename(columns={
-        "Open": "open", "High": "high", "Low": "low",
-        "Close": "close", "Volume": "volume",
-    })
+    raw = raw.rename(
+        columns={
+            "Open": "open",
+            "High": "high",
+            "Low": "low",
+            "Close": "close",
+            "Volume": "volume",
+        }
+    )
 
     # Reset DatetimeIndex → timestamp column
     raw = raw.reset_index()

@@ -1,16 +1,17 @@
-import os
-import json
-import math
 import asyncio
+import math
+import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+
 from textblob import TextBlob
-from utils.logger import get_logger
+
 from config.settings import (
-    TWITTER_ACCOUNTS,
     ASSET_TWITTER_KEYWORDS,
     CACHE_DIR,
+    TWITTER_ACCOUNTS,
 )
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -31,19 +32,17 @@ async def _get_client():
     try:
         from twikit import Client
     except ImportError:
-        raise ImportError("twikit not installed. Run: pip install twikit")
+        raise ImportError("twikit not installed. Run: pip install twikit")  # noqa: B904
 
     os.makedirs(CACHE_DIR, exist_ok=True)
     client = Client("en-US")
 
     username = os.getenv("TWITTER_USERNAME", "")
-    email    = os.getenv("TWITTER_EMAIL", "")
+    email = os.getenv("TWITTER_EMAIL", "")
     password = os.getenv("TWITTER_PASSWORD", "")
 
     if not all([username, email, password]):
-        raise ValueError(
-            "TWITTER_USERNAME, TWITTER_EMAIL, TWITTER_PASSWORD must be set in .env"
-        )
+        raise ValueError("TWITTER_USERNAME, TWITTER_EMAIL, TWITTER_PASSWORD must be set in .env")
 
     if COOKIE_PATH.exists():
         try:
@@ -73,20 +72,22 @@ async def _fetch_account_tweets(client, username: str) -> list[dict]:
         user = await client.get_user_by_screen_name(username)
         tweets = await user.get_tweets("Tweets", count=MAX_TWEETS_PER_ACCOUNT)
         results = []
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=TWEET_LOOKBACK_HOURS)
+        cutoff = datetime.now(UTC) - timedelta(hours=TWEET_LOOKBACK_HOURS)
 
         for tweet in tweets:
             try:
                 created = datetime.strptime(tweet.created_at, "%a %b %d %H:%M:%S %z %Y")
                 if created < cutoff:
                     continue
-                results.append({
-                    "text":          tweet.full_text or tweet.text or "",
-                    "created_at":    created,
-                    "like_count":    tweet.favorite_count or 0,
-                    "retweet_count": tweet.retweet_count or 0,
-                    "username":      username,
-                })
+                results.append(
+                    {
+                        "text": tweet.full_text or tweet.text or "",
+                        "created_at": created,
+                        "like_count": tweet.favorite_count or 0,
+                        "retweet_count": tweet.retweet_count or 0,
+                        "username": username,
+                    }
+                )
             except Exception:
                 continue
         return results
@@ -100,23 +101,23 @@ async def _search_tweets(client, keywords: list[str]) -> list[dict]:
     for keyword in keywords[:2]:
         try:
             tweets = await client.search_tweet(
-                keyword,
-                product="Latest",
-                count=MAX_SEARCH_TWEETS // len(keywords[:2])
+                keyword, product="Latest", count=MAX_SEARCH_TWEETS // len(keywords[:2])
             )
-            cutoff = datetime.now(timezone.utc) - timedelta(hours=TWEET_LOOKBACK_HOURS)
+            cutoff = datetime.now(UTC) - timedelta(hours=TWEET_LOOKBACK_HOURS)
             for tweet in tweets:
                 try:
                     created = datetime.strptime(tweet.created_at, "%a %b %d %H:%M:%S %z %Y")
                     if created < cutoff:
                         continue
-                    results.append({
-                        "text":          tweet.full_text or tweet.text or "",
-                        "created_at":    created,
-                        "like_count":    tweet.favorite_count or 0,
-                        "retweet_count": tweet.retweet_count or 0,
-                        "username":      tweet.user.screen_name if tweet.user else "unknown",
-                    })
+                    results.append(
+                        {
+                            "text": tweet.full_text or tweet.text or "",
+                            "created_at": created,
+                            "like_count": tweet.favorite_count or 0,
+                            "retweet_count": tweet.retweet_count or 0,
+                            "username": tweet.user.screen_name if tweet.user else "unknown",
+                        }
+                    )
                 except Exception:
                     continue
         except Exception as e:
@@ -173,8 +174,8 @@ async def _fetch_twitter_sentiment_async(asset: str) -> dict:
     for tweet in all_tweets:
         text_score = _score_tweet_text(tweet["text"])
         engagement = tweet.get("like_count", 0) + tweet.get("retweet_count", 0) * 2
-        eng_boost  = min(2.0, math.log1p(engagement) / 10)
-        weight     = tweet.get("account_weight", 1.0) * (1.0 + eng_boost)
+        eng_boost = min(2.0, math.log1p(engagement) / 10)
+        weight = tweet.get("account_weight", 1.0) * (1.0 + eng_boost)
         weighted_sum += text_score * weight
         total_weight += weight
 
@@ -182,11 +183,11 @@ async def _fetch_twitter_sentiment_async(asset: str) -> dict:
     confidence = min(1.0, len(all_tweets) / 20.0)
 
     result = {
-        "score":       round(score, 4),
+        "score": round(score, 4),
         "tweet_count": len(all_tweets),
-        "confidence":  round(confidence, 4),
-        "source":      "twitter",
-        "asset":       asset,
+        "confidence": round(confidence, 4),
+        "source": "twitter",
+        "asset": asset,
     }
     logger.info(f"Twitter sentiment {asset}: {score:+.3f} ({len(all_tweets)} tweets)")
     return result
@@ -207,10 +208,10 @@ def fetch_twitter_sentiment(asset: str) -> dict:
 
 def _null_result(asset: str, reason: str = "") -> dict:
     return {
-        "score":       0.0,
+        "score": 0.0,
         "tweet_count": 0,
-        "confidence":  0.0,
-        "source":      "twitter",
-        "asset":       asset,
-        "error":       reason,
+        "confidence": 0.0,
+        "source": "twitter",
+        "asset": asset,
+        "error": reason,
     }

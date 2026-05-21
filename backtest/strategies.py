@@ -1,20 +1,20 @@
 import os
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass
-from abc import ABC, abstractmethod
 
 from utils.logger import get_logger
-from config.settings import MODEL_HORIZON
 
 logger = get_logger(__name__)
 
 
 @dataclass
 class Signal:
-    action:     str     # "BUY" | "SELL" | "HOLD"
+    action: str  # "BUY" | "SELL" | "HOLD"
     confidence: float
-    reason:     str
+    reason: str
 
 
 class BaseStrategy(ABC):
@@ -59,7 +59,7 @@ class RSIMeanReversionStrategy(BaseStrategy):
     name = "RSI Mean Reversion"
 
     def __init__(self, oversold: float = 30.0, overbought: float = 70.0):
-        self.oversold   = oversold
+        self.oversold = oversold
         self.overbought = overbought
 
     def generate_signal(self, window: pd.DataFrame) -> Signal:
@@ -112,17 +112,17 @@ class ZAERYNMLStrategy(BaseStrategy):
         self,
         asset: str,
         confidence_threshold: float = 0.30,
-        buy_risk_threshold:   float = 50.0,
-        sell_risk_threshold:  float = 65.0,
+        buy_risk_threshold: float = 50.0,
+        sell_risk_threshold: float = 65.0,
     ):
-        self.asset                = asset
+        self.asset = asset
         self.confidence_threshold = confidence_threshold
-        self.buy_risk_threshold   = buy_risk_threshold
-        self.sell_risk_threshold  = sell_risk_threshold
-        self._trend_model         = None
-        self._fallback            = MACDCrossStrategy()
-        self._model_loaded        = False
-        self._use_fallback        = False
+        self.buy_risk_threshold = buy_risk_threshold
+        self.sell_risk_threshold = sell_risk_threshold
+        self._trend_model = None
+        self._fallback = MACDCrossStrategy()
+        self._model_loaded = False
+        self._use_fallback = False
 
         self._load_model()
 
@@ -152,7 +152,7 @@ class ZAERYNMLStrategy(BaseStrategy):
     @staticmethod
     def _backtest_risk_score(trend_confidence: float, rsi: float | None) -> float:
         trend_uncertainty = 1.0 - trend_confidence
-        if rsi is not None and not np.isnan(rsi):
+        if rsi is not None and not np.isnan(rsi):  # noqa: SIM108
             momentum_risk = abs(rsi - 50.0) / 50.0
         else:
             momentum_risk = 0.0
@@ -181,7 +181,7 @@ class ZAERYNMLStrategy(BaseStrategy):
             logger.debug(f"ZAERYNMLStrategy predict_proba failed: {e}")
             return Signal("HOLD", 0.0, f"prediction failed: {e}")
 
-        direction  = trend_result.get("direction", "UNCERTAIN")
+        direction = trend_result.get("direction", "UNCERTAIN")
         confidence = float(trend_result.get("confidence", 0.0))
         risk_score = self._backtest_risk_score(confidence, rsi)
 
@@ -198,7 +198,8 @@ class ZAERYNMLStrategy(BaseStrategy):
 
         if direction == "DOWN" or risk_score > self.sell_risk_threshold:
             reason = (
-                "ML DOWN" if direction == "DOWN"
+                "ML DOWN"
+                if direction == "DOWN"
                 else f"risk={risk_score:.1f}>{self.sell_risk_threshold}"
             )
             return Signal("SELL", confidence, reason)

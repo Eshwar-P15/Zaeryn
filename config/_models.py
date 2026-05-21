@@ -11,9 +11,9 @@ The single exception is :class:`BirdeyeSettings`, which explicitly reads
 """
 
 from pathlib import Path
+
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -23,6 +23,7 @@ _INERT = SettingsConfigDict(env_prefix="ZAERYN_", env_file=None, extra="ignore")
 
 
 # -- Data / paths / HTTP -------------------------------------------------------
+
 
 class DataSettings(BaseSettings):
     model_config = _INERT
@@ -46,26 +47,28 @@ class DataSettings(BaseSettings):
 
 # -- Asset universe ------------------------------------------------------------
 
+
 class AssetSettings(BaseSettings):
     model_config = _INERT
 
     crypto_coinbase: list[str] = Field(
         default_factory=lambda: ["BTC-USD", "ETH-USD", "SOL-USD", "AVAX-USD", "LINK-USD"]
     )
-    crypto_birdeye: list[str] = Field(
-        default_factory=lambda: ["JUP", "BONK", "WIF", "PYTH", "RAY"]
-    )
+    crypto_birdeye: list[str] = Field(default_factory=lambda: ["JUP", "BONK", "WIF", "PYTH", "RAY"])
     stocks: list[str] = Field(
         default_factory=lambda: ["AAPL", "TSLA", "AMZN", "MSFT", "NVDA", "GOOGL", "META", "NFLX"]
     )
-    forex: list[str] = Field(
-        default_factory=lambda: ["EUR-USD", "GBP-USD", "JPY-USD", "AUD-USD"]
-    )
+    forex: list[str] = Field(default_factory=lambda: ["EUR-USD", "GBP-USD", "JPY-USD", "AUD-USD"])
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def all_assets(self) -> list[str]:
-        return list(self.crypto_coinbase) + list(self.crypto_birdeye) + list(self.stocks) + list(self.forex)
+        return (
+            list(self.crypto_coinbase)
+            + list(self.crypto_birdeye)
+            + list(self.stocks)
+            + list(self.forex)
+        )
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -105,6 +108,7 @@ class AssetSettings(BaseSettings):
 
 # -- ML models -----------------------------------------------------------------
 
+
 class ModelSettings(BaseSettings):
     model_config = _INERT
 
@@ -115,95 +119,108 @@ class ModelSettings(BaseSettings):
     save_dir: Path = PROJECT_ROOT / "models" / "saved"
     annualization_factor: int = 8760
 
-    rf_default: dict = Field(default_factory=lambda: {
-        "n_estimators":     200,
-        "max_depth":        8,
-        "min_samples_leaf": 5,
-        "class_weight":     "balanced",
-        "random_state":     42,
-        "n_jobs":           -1,
-    })
+    rf_default: dict = Field(
+        default_factory=lambda: {
+            "n_estimators": 200,
+            "max_depth": 8,
+            "min_samples_leaf": 5,
+            "class_weight": "balanced",
+            "random_state": 42,
+            "n_jobs": -1,
+        }
+    )
 
-    xgb_default: dict = Field(default_factory=lambda: {
-        "n_estimators":     300,
-        "max_depth":        6,
-        "learning_rate":    0.05,
-        "subsample":        0.8,
-        "colsample_bytree": 0.8,
-        "random_state":     42,
-        "n_jobs":           -1,
-        "verbosity":        0,
-    })
+    xgb_default: dict = Field(
+        default_factory=lambda: {
+            "n_estimators": 300,
+            "max_depth": 6,
+            "learning_rate": 0.05,
+            "subsample": 0.8,
+            "colsample_bytree": 0.8,
+            "random_state": 42,
+            "n_jobs": -1,
+            "verbosity": 0,
+        }
+    )
 
-    feature_windows: dict[str, int] = Field(default_factory=lambda: {
-        "sma_short":    20,
-        "sma_long":     50,
-        "ema_fast":     12,
-        "ema_slow":     26,
-        "macd_signal":  9,
-        "rsi":          14,
-        "atr":          14,
-        "bb":           20,
-        "roc":          10,
-        "williams_r":   14,
-        "realized_vol": 20,
-        "vwap":         20,
-        "obv_norm":     50,
-    })
+    feature_windows: dict[str, int] = Field(
+        default_factory=lambda: {
+            "sma_short": 20,
+            "sma_long": 50,
+            "ema_fast": 12,
+            "ema_slow": 26,
+            "macd_signal": 9,
+            "rsi": 14,
+            "atr": 14,
+            "bb": 20,
+            "roc": 10,
+            "williams_r": 14,
+            "realized_vol": 20,
+            "vwap": 20,
+            "obv_norm": 50,
+        }
+    )
 
     # ORDER MATTERS — joblib pickles of RF/XGB depend on this exact column order.
-    feature_columns: list[str] = Field(default_factory=lambda: [
-        "returns",
-        "log_returns",
-        "price_range",
-        "volume_ratio",
-        "sma_20",
-        "sma_50",
-        "ema_12",
-        "ema_26",
-        "macd",
-        "macd_signal",
-        "macd_hist",
-        "price_vs_sma20",
-        "rsi_14",
-        "roc_10",
-        "williams_r_14",
-        "atr_14",
-        "bb_width",
-        "bb_position",
-        "realized_vol_20",
-        "obv",
-        "vwap_ratio",
-        "hour_of_day",
-        "day_of_week",
-        "is_weekend",
-        "vol_regime",
-        "adx_14",
-        "volume_trend",
-        "yearly_position",
-        "macd_hist_momentum",
-    ])
+    feature_columns: list[str] = Field(
+        default_factory=lambda: [
+            "returns",
+            "log_returns",
+            "price_range",
+            "volume_ratio",
+            "sma_20",
+            "sma_50",
+            "ema_12",
+            "ema_26",
+            "macd",
+            "macd_signal",
+            "macd_hist",
+            "price_vs_sma20",
+            "rsi_14",
+            "roc_10",
+            "williams_r_14",
+            "atr_14",
+            "bb_width",
+            "bb_position",
+            "realized_vol_20",
+            "obv",
+            "vwap_ratio",
+            "hour_of_day",
+            "day_of_week",
+            "is_weekend",
+            "vol_regime",
+            "adx_14",
+            "volume_trend",
+            "yearly_position",
+            "macd_hist_momentum",
+        ]
+    )
 
 
 # -- Risk scoring --------------------------------------------------------------
 
+
 class RiskSettings(BaseSettings):
     model_config = _INERT
 
-    weights: dict[str, float] = Field(default_factory=lambda: {
-        "volatility":        0.30,
-        "trend_uncertainty": 0.25,
-        "sentiment":         0.20,
-        "price_momentum":    0.15,
-        "market_regime":     0.10,
-    })
+    weights: dict[str, float] = Field(
+        default_factory=lambda: {
+            "volatility": 0.30,
+            "trend_uncertainty": 0.25,
+            "sentiment": 0.20,
+            "price_momentum": 0.15,
+            "market_regime": 0.10,
+        }
+    )
 
-    thresholds: dict[str, tuple[int, int]] = Field(default_factory=lambda: {
-        "LOW":      (0,   25),
-        "MODERATE": (25,  50),
-        "HIGH":     (50,  75),
-        "EXTREME":  (75, 100),
-    })
+    thresholds: dict[str, tuple[int, int]] = Field(
+        default_factory=lambda: {
+            "LOW": (0, 25),
+            "MODERATE": (25, 50),
+            "HIGH": (50, 75),
+            "EXTREME": (75, 100),
+        }
+    )
 
     recommend_trade: int = 35
     recommend_hold: int = 55
@@ -229,32 +246,38 @@ class RiskSettings(BaseSettings):
 
 # -- Sentiment -----------------------------------------------------------------
 
+
 class SentimentSettings(BaseSettings):
     model_config = _INERT
 
-    weights: dict[str, float] = Field(default_factory=lambda: {
-        "onchain":    0.25,
-        "dex_ratio":  0.30,
-        "news":       0.25,
-        "fear_greed": 0.20,
-        "twitter":    0.00,
-    })
+    weights: dict[str, float] = Field(
+        default_factory=lambda: {
+            "onchain": 0.25,
+            "dex_ratio": 0.30,
+            "news": 0.25,
+            "fear_greed": 0.20,
+            "twitter": 0.00,
+        }
+    )
 
-    cache_ttl_minutes: dict[str, int] = Field(default_factory=lambda: {
-        "fear_greed":  60,
-        "news":        20,
-        "twitter":     15,
-        "dex_ratio":   5,
-        "onchain":     60,
-    })
+    cache_ttl_minutes: dict[str, int] = Field(
+        default_factory=lambda: {
+            "fear_greed": 60,
+            "news": 20,
+            "twitter": 15,
+            "dex_ratio": 5,
+            "onchain": 60,
+        }
+    )
 
 
 # -- Backtesting ---------------------------------------------------------------
 
+
 class BacktestSettings(BaseSettings):
     model_config = _INERT
 
-    commission_pct: float = 0.001       # 0.1% — Coinbase taker fee
+    commission_pct: float = 0.001  # 0.1% — Coinbase taker fee
     initial_capital: float = 10_000.0
     position_pct: float = 0.10
     stop_loss_pct: float = 0.05
@@ -268,6 +291,7 @@ class BacktestSettings(BaseSettings):
 
 
 # -- Birdeye (the ONE place env vars matter) -----------------------------------
+
 
 class BirdeyeSettings(BaseSettings):
     # Reads BIRDEYE_API_KEY from process env to preserve pre-refactor behaviour.

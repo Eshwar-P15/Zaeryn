@@ -1,16 +1,18 @@
-import sys
 import os
+import sys
 from pathlib import Path
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from config.settings import ALL_ASSETS, ASSET_SOURCE
-from utils.logger import get_logger
+from data.cleaner import clean_ohlcv, detect_anomalies, normalize_price_data, validate_ohlcv
 from data.historical import fetch_candles
-from data.cleaner import clean_ohlcv, validate_ohlcv, detect_anomalies, normalize_price_data
-from data.storage import init_db, upsert_candles, get_db_stats
+from data.storage import get_db_stats, init_db, upsert_candles
+from utils.logger import get_logger
 
 logger = get_logger("fetch_history")
 
@@ -18,12 +20,12 @@ FETCH_DAYS = 730
 
 
 def main():
-    print("\n" + "="*65)
+    print("\n" + "=" * 65)
     print("  ZAERYN — Historical Data Fetch (Phase 3 Pre-requisite)")
     print(f"  Target: {FETCH_DAYS} days of 1h candles for {len(ALL_ASSETS)} assets")
-    print("="*65 + "\n")
+    print("=" * 65 + "\n")
 
-    conn    = init_db()
+    conn = init_db()
     success = 0
     skipped = 0
 
@@ -35,11 +37,11 @@ def main():
             df = fetch_candles(asset, granularity="1h", days_back=FETCH_DAYS)
 
             if df is None or df.empty:
-                print(f"  ✗ No data returned — skipping\n")
+                print("  ✗ No data returned — skipping\n")
                 skipped += 1
                 continue
 
-            cleaned          = clean_ohlcv(df)
+            cleaned = clean_ohlcv(df)
             is_valid, errors = validate_ohlcv(cleaned)
 
             if not is_valid:
@@ -47,9 +49,9 @@ def main():
                 skipped += 1
                 continue
 
-            cleaned   = detect_anomalies(cleaned)
-            cleaned   = normalize_price_data(cleaned)
-            written   = upsert_candles(asset, "1h", cleaned, conn)
+            cleaned = detect_anomalies(cleaned)
+            cleaned = normalize_price_data(cleaned)
+            written = upsert_candles(asset, "1h", cleaned, conn)
             anomalies = int(cleaned["is_anomaly"].sum())
 
             print(f"  ✓ {written} rows stored | {anomalies} anomalies flagged\n")
@@ -60,12 +62,12 @@ def main():
             logger.exception(f"fetch_history failed for {asset}")
             skipped += 1
 
-    print("="*65)
+    print("=" * 65)
     print(f"  Done: {success}/{len(ALL_ASSETS)} assets fetched\n")
 
     stats = get_db_stats(conn)
     print(f"  {'Asset':<12} {'Gran':<6} {'Candles':>8}  {'From':<18}  {'To'}")
-    print("  " + "-"*65)
+    print("  " + "-" * 65)
     for asset in sorted(stats):
         for gran, info in stats[asset].items():
             flag = "✗  LOW" if info["count"] < 300 else "✓"
@@ -81,7 +83,7 @@ def main():
     else:
         print(f"  ⚠  {skipped} assets skipped. Check logs above.")
         print("  Assets with ✗ LOW candle count will be skipped during training.")
-    print("="*65 + "\n")
+    print("=" * 65 + "\n")
 
 
 if __name__ == "__main__":

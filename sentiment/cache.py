@@ -1,9 +1,10 @@
-import os
 import json
-from datetime import datetime, timezone, timedelta
+import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from utils.logger import get_logger
+
 from config.settings import CACHE_DIR, SENTIMENT_CACHE_TTL
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -15,10 +16,10 @@ def _cache_path(asset: str) -> Path:
 
 
 def cache_sentiment(asset: str, result: dict, ttl_minutes: int = 30) -> None:
-    expiry = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
+    expiry = datetime.now(UTC) + timedelta(minutes=ttl_minutes)
     cache_entry = {
         "expires_at": expiry.isoformat(),
-        "data":       _make_serializable(result),
+        "data": _make_serializable(result),
     }
     path = _cache_path(asset)
     try:
@@ -37,7 +38,7 @@ def load_cached_sentiment(asset: str) -> dict | None:
         with open(path) as f:
             entry = json.load(f)
         expires_at = datetime.fromisoformat(entry["expires_at"])
-        if datetime.now(timezone.utc) > expires_at:
+        if datetime.now(UTC) > expires_at:
             logger.debug(f"Cache expired for {asset}")
             return None
         logger.debug(f"Cache hit for {asset}")

@@ -1,25 +1,29 @@
 import os
+from datetime import UTC, datetime
+
 import joblib
 import numpy as np
 import pandas as pd
-from datetime import datetime, timezone
-
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score,
-    f1_score, roc_auc_score, log_loss,
+    accuracy_score,
+    f1_score,
+    log_loss,
+    precision_score,
+    recall_score,
+    roc_auc_score,
 )
 
-from utils.logger import get_logger
 from config.settings import (
-    MODEL_SAVE_DIR,
-    MODEL_HORIZON,
-    MODEL_TEST_SIZE,
     FEATURE_COLUMNS,
+    MODEL_HORIZON,
+    MODEL_SAVE_DIR,
+    MODEL_TEST_SIZE,
     RF_PARAMS,
     RF_PARAMS_BY_ASSET,
 )
 from models.features import build_feature_matrix
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -37,13 +41,13 @@ class TrendClassifier:
     UNCERTAINTY_THRESHOLD = 0.15
 
     def __init__(self, horizon: int = MODEL_HORIZON):
-        self.horizon               = horizon
-        self.model                 = None
-        self.feature_columns       = FEATURE_COLUMNS
-        self.is_trained            = False
-        self.asset                 = None
-        self.trained_at            = None
-        self.feature_importances_  = {}
+        self.horizon = horizon
+        self.model = None
+        self.feature_columns = FEATURE_COLUMNS
+        self.is_trained = False
+        self.asset = None
+        self.trained_at = None
+        self.feature_importances_ = {}
 
     def train(
         self,
@@ -59,9 +63,7 @@ class TrendClassifier:
         self.asset = asset
         logger.info(f"Training TrendClassifier: {asset}")
 
-        result = build_feature_matrix(
-            asset, horizon=self.horizon, days_back=days_back, conn=conn
-        )
+        result = build_feature_matrix(asset, horizon=self.horizon, days_back=days_back, conn=conn)
         if result is None:
             raise RuntimeError(f"Insufficient data for {asset}")
 
@@ -69,20 +71,18 @@ class TrendClassifier:
 
         # Drop any remaining NaN in target — defensive
         valid = y_dir.notna()
-        X     = X[valid].reset_index(drop=True)
+        X = X[valid].reset_index(drop=True)
         y_dir = y_dir[valid].reset_index(drop=True)
 
         # Chronological split — NEVER shuffle (Rule 2)
         split_idx = int(len(X) * (1 - test_size))
         if split_idx < 50:
-            raise RuntimeError(
-                f"[{asset}] training set too small after split: {split_idx} rows"
-            )
+            raise RuntimeError(f"[{asset}] training set too small after split: {split_idx} rows")
 
         X_train = X.iloc[:split_idx]
-        X_test  = X.iloc[split_idx:]
+        X_test = X.iloc[split_idx:]
         y_train = y_dir.iloc[:split_idx]
-        y_test  = y_dir.iloc[split_idx:]
+        y_test = y_dir.iloc[split_idx:]
 
         up_pct = float(y_train.mean() * 100)
         logger.info(
@@ -95,49 +95,48 @@ class TrendClassifier:
         _weights = _weights / _weights.mean()
 
         params = RF_PARAMS_BY_ASSET.get(asset, RF_PARAMS)
-        logger.info(f"[{asset}] RF params: {'optimized' if asset in RF_PARAMS_BY_ASSET else 'default'}")
+        logger.info(
+            f"[{asset}] RF params: {'optimized' if asset in RF_PARAMS_BY_ASSET else 'default'}"
+        )
         self.model = RandomForestClassifier(**params)
         self.model.fit(X_train, y_train.astype(int), sample_weight=_weights)
 
-        y_pred      = self.model.predict(X_test)
+        y_pred = self.model.predict(X_test)
         y_pred_prob = self.model.predict_proba(X_test)[:, 1]
 
-        accuracy  = float(accuracy_score(y_test.astype(int), y_pred))
+        accuracy = float(accuracy_score(y_test.astype(int), y_pred))
         precision = float(precision_score(y_test.astype(int), y_pred, zero_division=0))
-        recall    = float(recall_score(y_test.astype(int), y_pred, zero_division=0))
-        f1        = float(f1_score(y_test.astype(int), y_pred, zero_division=0))
-        auc       = float(roc_auc_score(y_test.astype(int), y_pred_prob))
-        logloss   = float(log_loss(y_test.astype(int), y_pred_prob))
+        recall = float(recall_score(y_test.astype(int), y_pred, zero_division=0))
+        f1 = float(f1_score(y_test.astype(int), y_pred, zero_division=0))
+        auc = float(roc_auc_score(y_test.astype(int), y_pred_prob))
+        logloss = float(log_loss(y_test.astype(int), y_pred_prob))
 
-        importances = dict(zip(self.feature_columns, self.model.feature_importances_))
+        importances = dict(zip(self.feature_columns, self.model.feature_importances_))  # noqa: B905
         self.feature_importances_ = dict(
             sorted(importances.items(), key=lambda x: x[1], reverse=True)[:10]
         )
 
         self.is_trained = True
-        self.trained_at = datetime.now(timezone.utc)
+        self.trained_at = datetime.now(UTC)
 
         metrics = {
-            "asset":          asset,
-            "model":          "TrendClassifier",
-            "train_rows":     len(X_train),
-            "test_rows":      len(X_test),
-            "accuracy":       round(accuracy,  4),
-            "precision":      round(precision, 4),
-            "recall":         round(recall,    4),
-            "f1":             round(f1,        4),
-            "auc":            round(auc,       4),
-            "log_loss":       round(logloss,   4),
-            "train_up_pct":   round(up_pct,    1),
-            "top_features":   list(self.feature_importances_.keys()),
-            "trained_at":     self.trained_at.isoformat(),
+            "asset": asset,
+            "model": "TrendClassifier",
+            "train_rows": len(X_train),
+            "test_rows": len(X_test),
+            "accuracy": round(accuracy, 4),
+            "precision": round(precision, 4),
+            "recall": round(recall, 4),
+            "f1": round(f1, 4),
+            "auc": round(auc, 4),
+            "log_loss": round(logloss, 4),
+            "train_up_pct": round(up_pct, 1),
+            "top_features": list(self.feature_importances_.keys()),
+            "trained_at": self.trained_at.isoformat(),
         }
         self.metrics_ = metrics
 
-        logger.info(
-            f"[{asset}] TrendClassifier: "
-            f"ACC={accuracy:.3f}  F1={f1:.3f}  AUC={auc:.3f}"
-        )
+        logger.info(f"[{asset}] TrendClassifier: ACC={accuracy:.3f}  F1={f1:.3f}  AUC={auc:.3f}")
         return metrics
 
     def predict_proba(self, df: pd.DataFrame) -> dict:
@@ -170,7 +169,7 @@ class TrendClassifier:
             raise RuntimeError("No valid rows after feature processing")
 
         latest = df_proc[self.feature_columns].iloc[[-1]]
-        probs  = self.model.predict_proba(latest)[0]
+        probs = self.model.predict_proba(latest)[0]
 
         # Guard: RF trained on single class returns only one probability column
         if len(probs) >= 2:
@@ -178,7 +177,7 @@ class TrendClassifier:
         else:
             up_prob = float(probs[0]) if self.model.classes_[0] == 1 else 1.0 - float(probs[0])
 
-        down_prob  = 1.0 - up_prob
+        down_prob = 1.0 - up_prob
         confidence = min(1.0, abs(up_prob - 0.5) * 2)
 
         if abs(up_prob - 0.5) < self.UNCERTAINTY_THRESHOLD:
@@ -189,10 +188,10 @@ class TrendClassifier:
             direction = "DOWN"
 
         return {
-            "up_probability":   round(up_prob,    4),
-            "down_probability": round(down_prob,  4),
-            "direction":        direction,
-            "confidence":       round(confidence, 4),
+            "up_probability": round(up_prob, 4),
+            "down_probability": round(down_prob, 4),
+            "direction": direction,
+            "confidence": round(confidence, 4),
         }
 
     def save(self, path: str = None) -> str:
@@ -206,21 +205,24 @@ class TrendClassifier:
 
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         m = getattr(self, "metrics_", {})
-        joblib.dump({
-            "model":               self.model,
-            "feature_columns":     self.feature_columns,
-            "horizon":             self.horizon,
-            "asset":               self.asset,
-            "trained_at":          self.trained_at,
-            "feature_importances": self.feature_importances_,
-            # training metrics — read by dashboard ML Models page
-            "auc":                 m.get("auc"),
-            "f1":                  m.get("f1"),
-            "accuracy":            m.get("accuracy"),
-            "precision":           m.get("precision"),
-            "recall":              m.get("recall"),
-            "train_rows":          m.get("train_rows"),
-        }, path)
+        joblib.dump(
+            {
+                "model": self.model,
+                "feature_columns": self.feature_columns,
+                "horizon": self.horizon,
+                "asset": self.asset,
+                "trained_at": self.trained_at,
+                "feature_importances": self.feature_importances_,
+                # training metrics — read by dashboard ML Models page
+                "auc": m.get("auc"),
+                "f1": m.get("f1"),
+                "accuracy": m.get("accuracy"),
+                "precision": m.get("precision"),
+                "recall": m.get("recall"),
+                "train_rows": m.get("train_rows"),
+            },
+            path,
+        )
 
         logger.info(f"TrendClassifier saved → {path}")
         return path
@@ -230,13 +232,13 @@ class TrendClassifier:
             raise FileNotFoundError(f"Model not found: {path}")
 
         p = joblib.load(path)
-        self.model                = p["model"]
-        self.feature_columns      = p["feature_columns"]
-        self.horizon              = p["horizon"]
-        self.asset                = p["asset"]
-        self.trained_at           = p.get("trained_at")
+        self.model = p["model"]
+        self.feature_columns = p["feature_columns"]
+        self.horizon = p["horizon"]
+        self.asset = p["asset"]
+        self.trained_at = p.get("trained_at")
         self.feature_importances_ = p.get("feature_importances", {})
-        self.is_trained           = True
+        self.is_trained = True
         logger.info(f"TrendClassifier loaded → {path}")
 
     @classmethod
@@ -247,7 +249,7 @@ class TrendClassifier:
         force_retrain: bool = False,
     ) -> "TrendClassifier":
         path = cls.model_path(asset, horizon)
-        obj  = cls(horizon=horizon)
+        obj = cls(horizon=horizon)
         if not force_retrain and os.path.exists(path):
             obj.load(path)
         else:

@@ -1,49 +1,49 @@
 COLORS = {
-    "bg_void":         "#000000",
-    "bg_deep":         "#0A0A0A",
-    "bg_surface":      "#111111",
-    "bg_hover":        "#1A1A1A",
-    "text_primary":    "#F5F5F5",
-    "text_secondary":  "#888888",
-    "text_muted":      "#444444",
-    "accent_primary":  "#FF2D00",
-    "accent_warm":     "#FF5500",
-    "accent_glow":     "#FF3D00",
-    "accent_dim":      "#8B1500",
-    "positive":        "#E8E8E8",
-    "negative":        "#FF2D00",
-    "neutral":         "#555555",
-    "border_default":  "#1E1E1E",
-    "border_active":   "#FF2D00",
-    "border_subtle":   "#161616",
+    "bg_void": "#000000",
+    "bg_deep": "#0A0A0A",
+    "bg_surface": "#111111",
+    "bg_hover": "#1A1A1A",
+    "text_primary": "#F5F5F5",
+    "text_secondary": "#888888",
+    "text_muted": "#444444",
+    "accent_primary": "#FF2D00",
+    "accent_warm": "#FF5500",
+    "accent_glow": "#FF3D00",
+    "accent_dim": "#8B1500",
+    "positive": "#E8E8E8",
+    "negative": "#FF2D00",
+    "neutral": "#555555",
+    "border_default": "#1E1E1E",
+    "border_active": "#FF2D00",
+    "border_subtle": "#161616",
 }
 
 PLOTLY_BASE = {
     "paper_bgcolor": "#000000",
-    "plot_bgcolor":  "#000000",
-    "font":          {"color": "#888888", "family": "Space Mono"},
+    "plot_bgcolor": "#000000",
+    "font": {"color": "#888888", "family": "Space Mono"},
     "xaxis": {
-        "gridcolor":     "#161616",
-        "linecolor":     "#1E1E1E",
-        "tickfont":      {"color": "#555555", "size": 10, "family": "Space Mono"},
+        "gridcolor": "#161616",
+        "linecolor": "#1E1E1E",
+        "tickfont": {"color": "#555555", "size": 10, "family": "Space Mono"},
         "zerolinecolor": "#1E1E1E",
     },
     "yaxis": {
-        "gridcolor":     "#161616",
-        "linecolor":     "#1E1E1E",
-        "tickfont":      {"color": "#555555", "size": 10, "family": "Space Mono"},
+        "gridcolor": "#161616",
+        "linecolor": "#1E1E1E",
+        "tickfont": {"color": "#555555", "size": 10, "family": "Space Mono"},
         "zerolinecolor": "#1E1E1E",
     },
     "legend": {
-        "bgcolor":     "rgba(10,10,10,0.9)",
+        "bgcolor": "rgba(10,10,10,0.9)",
         "bordercolor": "#1E1E1E",
         "borderwidth": 1,
-        "font":        {"color": "#888888", "size": 11, "family": "Space Mono"},
+        "font": {"color": "#888888", "size": 11, "family": "Space Mono"},
     },
     "hoverlabel": {
-        "bgcolor":     "#000000",
+        "bgcolor": "#000000",
         "bordercolor": "#FF3D00",
-        "font":        {"color": "#F5F5F5", "family": "Space Mono", "size": 11},
+        "font": {"color": "#F5F5F5", "family": "Space Mono", "size": 11},
     },
     "margin": {"l": 50, "r": 20, "t": 40, "b": 40},
 }
@@ -243,31 +243,32 @@ hr { border-color: #1E1E1E; margin: 2rem 0; }
 
 def page_title(text: str, subtitle: str = "") -> str:
     sub = (
-        f'<p style="font-family:\'Space Mono\',monospace;font-size:0.75rem;color:#555555;'
-        f'letter-spacing:0.1em;text-transform:uppercase;margin:0 0 2rem 0;'
+        f"<p style=\"font-family:'Space Mono',monospace;font-size:0.75rem;color:#555555;"
+        f"letter-spacing:0.1em;text-transform:uppercase;margin:0 0 2rem 0;"
         f'max-width:600px;line-height:1.6;">{subtitle}</p>'
-        if subtitle else "<div style='margin-bottom:2rem'></div>"
+        if subtitle
+        else "<div style='margin-bottom:2rem'></div>"
     )
     return (
         f'<div style="margin-bottom:0.5rem;">'
-        f'<h1 style="font-family:\'Bebas Neue\',sans-serif;font-size:5rem;font-weight:400;'
+        f"<h1 style=\"font-family:'Bebas Neue',sans-serif;font-size:5rem;font-weight:400;"
         f'letter-spacing:0.06em;color:#F5F5F5;margin:0 0 0.5rem 0;line-height:0.9;">{text}</h1>'
-        f'{sub}</div>'
+        f"{sub}</div>"
     )
 
 
 def stat_block(value: str, label: str, accent: bool = False) -> str:
-    val_color  = "#FF3D00" if accent else "#F5F5F5"
-    glow       = "text-shadow:0 0 30px rgba(255,61,0,0.33);" if accent else ""
+    val_color = "#FF3D00" if accent else "#F5F5F5"
+    glow = "text-shadow:0 0 30px rgba(255,61,0,0.33);" if accent else ""
     border_top = "#FF2D00" if accent else "#1E1E1E"
     return (
         f'<div style="padding:1.5rem;background:#0A0A0A;border:1px solid #1E1E1E;'
         f'border-top:2px solid {border_top};">'
-        f'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:3.2rem;font-weight:400;'
+        f"<div style=\"font-family:'Bebas Neue',sans-serif;font-size:3.2rem;font-weight:400;"
         f'color:{val_color};letter-spacing:0.04em;line-height:1;{glow}">{value}</div>'
-        f'<div style="font-family:\'Space Mono\',monospace;font-size:0.65rem;color:#444444;'
+        f"<div style=\"font-family:'Space Mono',monospace;font-size:0.65rem;color:#444444;"
         f'text-transform:uppercase;letter-spacing:0.12em;margin-top:0.5rem;">{label}</div>'
-        f'</div>'
+        f"</div>"
     )
 
 
@@ -277,11 +278,12 @@ def chart_container(title: str = "", subtitle: str = "") -> str:
         sub_html = (
             f'<div style="font-family:Space Mono,monospace;font-size:0.65rem;color:#444;'
             f'margin-top:0.25rem;letter-spacing:0.08em;text-transform:uppercase;">{subtitle}</div>'
-            if subtitle else ""
+            if subtitle
+            else ""
         )
         title_html = (
             f'<div style="padding:1rem 1.25rem 0.75rem;border-bottom:1px solid #161616;">'
-            f'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:1.3rem;'
+            f"<div style=\"font-family:'Bebas Neue',sans-serif;font-size:1.3rem;"
             f'letter-spacing:0.08em;color:#F5F5F5;">{title}</div>{sub_html}</div>'
         )
     return (
@@ -296,23 +298,23 @@ def chart_container_close() -> str:
 
 def section_label(text: str) -> str:
     return (
-        f'<div style="font-family:\'Space Mono\',monospace;font-size:0.65rem;color:#FF3D00;'
-        f'text-transform:uppercase;letter-spacing:0.2em;margin-bottom:1rem;'
+        f"<div style=\"font-family:'Space Mono',monospace;font-size:0.65rem;color:#FF3D00;"
+        f"text-transform:uppercase;letter-spacing:0.2em;margin-bottom:1rem;"
         f'display:flex;align-items:center;gap:0.5rem;">'
         f'<span style="display:inline-block;width:20px;height:1px;background:#FF3D00;"></span>'
-        f'{text}</div>'
+        f"{text}</div>"
     )
 
 
 def tag(text: str, variant: str = "default") -> str:
     styles = {
-        "default":  "background:#111;color:#888;border:1px solid #1E1E1E;",
-        "active":   "background:rgba(139,21,0,0.13);color:#FF3D00;border:1px solid rgba(255,45,0,0.27);",
+        "default": "background:#111;color:#888;border:1px solid #1E1E1E;",
+        "active": "background:rgba(139,21,0,0.13);color:#FF3D00;border:1px solid rgba(255,45,0,0.27);",
         "positive": "background:#1A1A1A;color:#E8E8E8;border:1px solid #333;",
     }
     s = styles.get(variant, styles["default"])
     return (
-        f'<span style="{s}font-family:\'Space Mono\',monospace;font-size:0.65rem;'
-        f'padding:0.2rem 0.5rem;letter-spacing:0.06em;text-transform:uppercase;'
+        f"<span style=\"{s}font-family:'Space Mono',monospace;font-size:0.65rem;"
+        f"padding:0.2rem 0.5rem;letter-spacing:0.06em;text-transform:uppercase;"
         f'display:inline-block;margin:0.1rem;">{text}</span>'
     )

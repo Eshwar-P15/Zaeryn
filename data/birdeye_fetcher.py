@@ -12,25 +12,26 @@ Output schema matches clean_ohlcv() contract:
 """
 
 import time
-import requests
-import pandas as pd
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from utils.logger import get_logger
+import pandas as pd
+import requests
+
 from config.settings import (
     BIRDEYE_API_KEY,
     BIRDEYE_BASE_URL,
     BIRDEYE_CHAIN,
     BIRDEYE_CHUNK_SIZE,
-    BIRDEYE_RATE_LIMIT_SLEEP,
     BIRDEYE_HISTORY_DAYS,
+    BIRDEYE_RATE_LIMIT_SLEEP,
     SOLANA_TOKENS,
 )
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 OHLCV_ENDPOINT = f"{BIRDEYE_BASE_URL}/defi/ohlcv"
-INTERVAL_MAP   = {"1h": "1H", "1d": "1D", "15m": "15m"}
+INTERVAL_MAP = {"1h": "1H", "1d": "1D", "15m": "15m"}
 
 
 def _make_headers() -> dict:
@@ -43,17 +44,17 @@ def _make_headers() -> dict:
         )
     return {
         "X-API-KEY": BIRDEYE_API_KEY,
-        "x-chain":   BIRDEYE_CHAIN,
-        "accept":    "application/json",
+        "x-chain": BIRDEYE_CHAIN,
+        "accept": "application/json",
     }
 
 
 def _fetch_chunk(
     mint_address: str,
-    time_from:    int,
-    time_to:      int,
-    interval:     str = "1H",
-    attempt:      int = 0,
+    time_from: int,
+    time_to: int,
+    interval: str = "1H",
+    attempt: int = 0,
 ) -> list[dict] | None:
     """Fetches one time-window chunk from Birdeye. Returns items list or None."""
     try:
@@ -61,18 +62,16 @@ def _fetch_chunk(
             OHLCV_ENDPOINT,
             headers=_make_headers(),
             params={
-                "address":   mint_address,
-                "type":      interval,
+                "address": mint_address,
+                "type": interval,
                 "time_from": time_from,
-                "time_to":   time_to,
+                "time_to": time_to,
             },
             timeout=15,
         )
 
         if resp.status_code == 401:
-            raise RuntimeError(
-                "Birdeye 401 Unauthorized — check BIRDEYE_API_KEY in .env"
-            )
+            raise RuntimeError("Birdeye 401 Unauthorized — check BIRDEYE_API_KEY in .env")
 
         if resp.status_code == 429:
             if attempt == 0:
@@ -116,10 +115,16 @@ def _items_to_dataframe(items: list[dict]) -> pd.DataFrame:
         return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
     df = pd.DataFrame(items)
-    df = df.rename(columns={
-        "unixTime": "timestamp",
-        "o": "open", "h": "high", "l": "low", "c": "close", "v": "volume",
-    })
+    df = df.rename(
+        columns={
+            "unixTime": "timestamp",
+            "o": "open",
+            "h": "high",
+            "l": "low",
+            "c": "close",
+            "v": "volume",
+        }
+    )
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True)
 
     for col in ["open", "high", "low", "close", "volume"]:
@@ -134,9 +139,9 @@ def _items_to_dataframe(items: list[dict]) -> pd.DataFrame:
 
 def fetch_birdeye_ohlcv(
     mint_address: str,
-    symbol:       str,
-    granularity:  str = "1h",
-    days_back:    int = BIRDEYE_HISTORY_DAYS,
+    symbol: str,
+    granularity: str = "1h",
+    days_back: int = BIRDEYE_HISTORY_DAYS,
 ) -> pd.DataFrame | None:
     """
     Fetches full available OHLCV history for a Solana token.
@@ -146,18 +151,18 @@ def fetch_birdeye_ohlcv(
 
     Returns DataFrame[timestamp, open, high, low, close, volume] or None.
     """
-    interval     = INTERVAL_MAP.get(granularity, "1H")
-    now          = int(datetime.now(timezone.utc).timestamp())
+    interval = INTERVAL_MAP.get(granularity, "1H")
+    now = int(datetime.now(UTC).timestamp())
     target_start = now - (days_back * 24 * 3600)
-    chunk_secs   = BIRDEYE_CHUNK_SIZE * 3600
+    chunk_secs = BIRDEYE_CHUNK_SIZE * 3600
 
     logger.info(
         f"[{symbol}] Birdeye fetch — interval={interval} "
         f"days_back={days_back} address={mint_address[:8]}..."
     )
 
-    all_items      = []
-    time_to        = now
+    all_items = []
+    time_to = now
     chunks_fetched = 0
 
     while time_to > target_start:
@@ -165,8 +170,8 @@ def fetch_birdeye_ohlcv(
 
         logger.debug(
             f"[{symbol}] chunk {chunks_fetched + 1}: "
-            f"{datetime.fromtimestamp(time_from, tz=timezone.utc).strftime('%Y-%m-%d')} → "
-            f"{datetime.fromtimestamp(time_to, tz=timezone.utc).strftime('%Y-%m-%d')}"
+            f"{datetime.fromtimestamp(time_from, tz=UTC).strftime('%Y-%m-%d')} → "
+            f"{datetime.fromtimestamp(time_to, tz=UTC).strftime('%Y-%m-%d')}"
         )
 
         items = _fetch_chunk(mint_address, int(time_from), int(time_to), interval)
@@ -191,11 +196,7 @@ def fetch_birdeye_ohlcv(
         return None
 
     df = _items_to_dataframe(all_items)
-    df = (
-        df.drop_duplicates(subset=["timestamp"])
-          .sort_values("timestamp")
-          .reset_index(drop=True)
-    )
+    df = df.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
 
     logger.info(
         f"[{symbol}] {len(df):,} candles | "
@@ -207,16 +208,16 @@ def fetch_birdeye_ohlcv(
 
 def fetch_all_solana_tokens(
     granularity: str = "1h",
-    days_back:   int = BIRDEYE_HISTORY_DAYS,
+    days_back: int = BIRDEYE_HISTORY_DAYS,
 ) -> dict[str, pd.DataFrame | None]:
     """Fetches all 5 Solana tokens. Returns {symbol: DataFrame or None}."""
     results = {}
-    tokens  = {k: v for k, v in SOLANA_TOKENS.items() if k in ["JUP", "BONK", "WIF", "PYTH", "RAY"]}
+    tokens = {k: v for k, v in SOLANA_TOKENS.items() if k in ["JUP", "BONK", "WIF", "PYTH", "RAY"]}
 
     logger.info(f"Fetching {len(tokens)} Solana tokens: {list(tokens.keys())}")
 
     for symbol, mint in tokens.items():
-        logger.info(f"\n{'─'*50}\n{symbol}\n{'─'*50}")
+        logger.info(f"\n{'─' * 50}\n{symbol}\n{'─' * 50}")
         results[symbol] = fetch_birdeye_ohlcv(mint, symbol, granularity, days_back)
 
     return results

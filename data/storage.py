@@ -1,12 +1,12 @@
 import sqlite3
+from datetime import datetime, timedelta
 from pathlib import Path
+
 import pandas as pd
-from datetime import datetime, timezone, timedelta
-from typing import Optional, Union
 
 from config.settings import DB_PATH
 from utils.logger import get_logger
-from utils.time_utils import to_unix, from_unix, now_utc
+from utils.time_utils import from_unix, now_utc, to_unix
 
 logger = get_logger(__name__)
 
@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_candles_asset_time
 """
 
 
-def init_db(db_path: Union[str, Path] = DB_PATH) -> sqlite3.Connection:
+def init_db(db_path: str | Path = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
 
@@ -67,24 +67,23 @@ def upsert_candles(
     rows = []
     for _, row in df.iterrows():
         ts = row["timestamp"]
-        if isinstance(ts, (datetime, pd.Timestamp)):
-            ts_unix = to_unix(ts)
-        else:
-            ts_unix = int(ts)
+        ts_unix = to_unix(ts) if isinstance(ts, datetime | pd.Timestamp) else int(ts)
 
         is_anomaly = int(row.get("is_anomaly", 0)) if "is_anomaly" in df.columns else 0
 
-        rows.append((
-            asset,
-            granularity,
-            ts_unix,
-            float(row["open"]),
-            float(row["high"]),
-            float(row["low"]),
-            float(row["close"]),
-            float(row["volume"]),
-            is_anomaly,
-        ))
+        rows.append(
+            (
+                asset,
+                granularity,
+                ts_unix,
+                float(row["open"]),
+                float(row["high"]),
+                float(row["low"]),
+                float(row["close"]),
+                float(row["volume"]),
+                is_anomaly,
+            )
+        )
 
     cursor = conn.cursor()
     cursor.executemany(
@@ -105,7 +104,7 @@ def load_candles(
     asset: str,
     granularity: str,
     days_back: int = 30,
-    conn: Optional[sqlite3.Connection] = None,
+    conn: sqlite3.Connection | None = None,
 ) -> pd.DataFrame:
     close_conn = False
     if conn is None:
@@ -131,9 +130,13 @@ def load_candles(
 
     if not rows:
         logger.debug(f"load_candles: no data found for {asset} ({granularity}, {days_back}d)")
-        return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume", "is_anomaly"])
+        return pd.DataFrame(
+            columns=["timestamp", "open", "high", "low", "close", "volume", "is_anomaly"]
+        )
 
-    df = pd.DataFrame(rows, columns=["timestamp", "open", "high", "low", "close", "volume", "is_anomaly"])
+    df = pd.DataFrame(
+        rows, columns=["timestamp", "open", "high", "low", "close", "volume", "is_anomaly"]
+    )
     df["timestamp"] = df["timestamp"].apply(from_unix)
     df["is_anomaly"] = df["is_anomaly"].astype(bool)
 

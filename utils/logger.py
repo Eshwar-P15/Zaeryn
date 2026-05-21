@@ -1,5 +1,6 @@
 import logging
 import os
+
 from config.settings import LOGS_DIR
 
 
@@ -14,8 +15,7 @@ def get_logger(name: str) -> logging.Logger:
     logger.setLevel(logging.DEBUG)
 
     fmt = logging.Formatter(
-        fmt="[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        fmt="[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
 
     console = logging.StreamHandler()

@@ -11,27 +11,29 @@
 #
 # Run: python -X utf8 scripts/fetch_stock_forex_history.py
 
-import sys
 import os
+import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pathlib import Path
+
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from config.settings import STOCK_TICKERS, FOREX_TICKERS, YFINANCE_MAX_DAYS_1H
-from utils.logger import get_logger
+from config.settings import FOREX_TICKERS, STOCK_TICKERS, YFINANCE_MAX_DAYS_1H
+from data.cleaner import clean_ohlcv, detect_anomalies, normalize_price_data, validate_ohlcv
+from data.storage import get_db_stats, init_db, upsert_candles
 from data.yfinance_fetcher import fetch_yfinance_ohlcv
-from data.cleaner import clean_ohlcv, validate_ohlcv, detect_anomalies, normalize_price_data
-from data.storage import init_db, upsert_candles, get_db_stats
+from utils.logger import get_logger
 
 logger = get_logger("fetch_stock_forex_history")
 
 ALL_SYMBOLS = STOCK_TICKERS + FOREX_TICKERS
 GRANULARITY = "1h"
-DAYS_BACK   = YFINANCE_MAX_DAYS_1H   # 730 days
+DAYS_BACK = YFINANCE_MAX_DAYS_1H  # 730 days
 
 
 def main():
@@ -43,10 +45,10 @@ def main():
     print(f"  Total:  {len(ALL_SYMBOLS)} assets")
     print("=" * 65 + "\n")
 
-    conn         = init_db()
+    conn = init_db()
     stats_before = get_db_stats(conn)
-    total_added  = 0
-    results      = {}
+    total_added = 0
+    results = {}
 
     for i, symbol in enumerate(ALL_SYMBOLS, 1):
         asset_type = "STOCK" if symbol in STOCK_TICKERS else "FOREX"
@@ -56,7 +58,7 @@ def main():
         raw = fetch_yfinance_ohlcv(symbol, granularity=GRANULARITY, days_back=DAYS_BACK)
 
         if raw is None or raw.empty:
-            print(f"  ✗ No data returned\n")
+            print("  ✗ No data returned\n")
             results[symbol] = "no data"
             continue
 
@@ -67,7 +69,7 @@ def main():
         cleaned = cleaned.dropna(subset=["open", "high", "low", "close"]).reset_index(drop=True)
 
         if cleaned.empty:
-            print(f"  ✗ Empty after cleaning\n")
+            print("  ✗ Empty after cleaning\n")
             results[symbol] = "empty after clean"
             continue
 
@@ -77,19 +79,21 @@ def main():
             results[symbol] = f"invalid: {errors}"
             continue
 
-        cleaned   = detect_anomalies(cleaned)
-        cleaned   = normalize_price_data(cleaned)
+        cleaned = detect_anomalies(cleaned)
+        cleaned = normalize_price_data(cleaned)
         anomalies = int(cleaned["is_anomaly"].sum()) if "is_anomaly" in cleaned.columns else 0
 
         written = upsert_candles(symbol, GRANULARITY, cleaned, conn)
         total_added += written
 
-        elapsed  = round(time.time() - t0, 1)
+        elapsed = round(time.time() - t0, 1)
         earliest = cleaned["timestamp"].min().strftime("%Y-%m-%d")
-        latest   = cleaned["timestamp"].max().strftime("%Y-%m-%d")
+        latest = cleaned["timestamp"].max().strftime("%Y-%m-%d")
 
-        print(f"  ✓ {written:,} candles | {earliest} → {latest} | "
-              f"{anomalies} anomalies | {elapsed}s\n")
+        print(
+            f"  ✓ {written:,} candles | {earliest} → {latest} | "
+            f"{anomalies} anomalies | {elapsed}s\n"
+        )
         results[symbol] = written
 
     stats_after = get_db_stats(conn)
@@ -101,9 +105,9 @@ def main():
 
     for symbol in ALL_SYMBOLS:
         before = stats_before.get(symbol, {}).get(GRANULARITY, {}).get("count", 0)
-        after  = stats_after.get(symbol,  {}).get(GRANULARITY, {}).get("count", 0)
-        added  = after - before
-        oldest = stats_after.get(symbol,  {}).get(GRANULARITY, {}).get("oldest", "")[:10]
+        after = stats_after.get(symbol, {}).get(GRANULARITY, {}).get("count", 0)
+        added = after - before
+        oldest = stats_after.get(symbol, {}).get(GRANULARITY, {}).get("oldest", "")[:10]
 
         # Stocks trade ~6.5h/day × 5 days × 52 weeks ≈ 1690 candles/year
         # Forex trades ~24h/day × 5 days × 52 weeks ≈ 6240 candles/year
@@ -117,14 +121,16 @@ def main():
         else:
             status = "✗ INSUFFICIENT"
 
-        print(f"  {symbol:<12}  {before:>8,}  {after:>8,}  {added:>+8,}  "
-              f"{status}  [{oldest}]")
+        print(f"  {symbol:<12}  {before:>8,}  {after:>8,}  {added:>+8,}  {status}  [{oldest}]")
 
     print("=" * 65)
     print(f"\n  Total candles added: {total_added:,}")
 
-    ready = [s for s in ALL_SYMBOLS
-             if stats_after.get(s, {}).get(GRANULARITY, {}).get("count", 0) >= 1000]
+    ready = [
+        s
+        for s in ALL_SYMBOLS
+        if stats_after.get(s, {}).get(GRANULARITY, {}).get("count", 0) >= 1000
+    ]
     print(f"  Ready for training:  {ready}\n")
 
     print("  Next steps:")

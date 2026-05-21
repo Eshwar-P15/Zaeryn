@@ -1,13 +1,17 @@
-import pytest
-import sqlite3
-import pandas as pd
 import numpy as np
-from datetime import datetime, timezone
+import pandas as pd
+import pytest
 
-from data.cleaner import validate_ohlcv, clean_ohlcv, detect_anomalies, normalize_price_data
-from data.storage import init_db, upsert_candles, load_candles, upsert_price_snapshot, load_price_snapshots
-from utils.time_utils import now_utc, to_unix, from_unix, chunk_date_range, date_range
-from utils.math_utils import pct_change, rolling_mean, rolling_std, normalize_minmax, clamp
+from data.cleaner import clean_ohlcv, detect_anomalies, normalize_price_data, validate_ohlcv
+from data.storage import (
+    init_db,
+    load_candles,
+    load_price_snapshots,
+    upsert_candles,
+    upsert_price_snapshot,
+)
+from utils.math_utils import clamp, normalize_minmax, pct_change, rolling_mean
+from utils.time_utils import chunk_date_range, date_range, from_unix, now_utc, to_unix
 
 
 def make_sample_ohlcv(n: int = 50) -> pd.DataFrame:
@@ -17,14 +21,16 @@ def make_sample_ohlcv(n: int = 50) -> pd.DataFrame:
     closes = 40000.0 + np.cumsum(np.random.randn(n) * 100)
     closes = np.maximum(closes, 1000)
 
-    return pd.DataFrame({
-        "timestamp": timestamps,
-        "open":   closes * 0.999,
-        "high":   closes * 1.005,
-        "low":    closes * 0.995,
-        "close":  closes,
-        "volume": np.random.uniform(100, 1000, n),
-    })
+    return pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "open": closes * 0.999,
+            "high": closes * 1.005,
+            "low": closes * 0.995,
+            "close": closes,
+            "volume": np.random.uniform(100, 1000, n),
+        }
+    )
 
 
 @pytest.fixture
@@ -41,12 +47,15 @@ def mem_conn():
 
 # --- utils/math_utils tests ---
 
+
 def test_pct_change_basic():
     assert pct_change(100, 110) == pytest.approx(10.0)
     assert pct_change(100, 90) == pytest.approx(-10.0)
 
+
 def test_pct_change_zero_old():
     assert pct_change(0, 50) == 0.0
+
 
 def test_rolling_mean_basic():
     vals = [1.0, 2.0, 3.0, 4.0, 5.0]
@@ -56,12 +65,14 @@ def test_rolling_mean_basic():
     assert result[2] == pytest.approx(2.0)
     assert result[4] == pytest.approx(4.0)
 
+
 def test_normalize_minmax():
     vals = [0.0, 5.0, 10.0]
     result = normalize_minmax(vals)
     assert result[0] == pytest.approx(0.0)
     assert result[1] == pytest.approx(0.5)
     assert result[2] == pytest.approx(1.0)
+
 
 def test_clamp():
     assert clamp(5.0, 0.0, 10.0) == 5.0
@@ -71,14 +82,15 @@ def test_clamp():
 
 # --- utils/time_utils tests ---
 
+
 def test_unix_roundtrip():
     dt = now_utc().replace(microsecond=0)
     ts = to_unix(dt)
     recovered = from_unix(ts)
     assert dt == recovered
 
+
 def test_chunk_date_range_covers_full_range():
-    from datetime import timedelta
     start, end = date_range(30)
     chunks = chunk_date_range(start, end, "1h")
     assert chunks[0][0] == start
@@ -89,9 +101,11 @@ def test_chunk_date_range_covers_full_range():
 
 # --- data/cleaner tests ---
 
+
 def test_validate_ohlcv_valid(sample_df):
     is_valid, errors = validate_ohlcv(sample_df)
     assert is_valid, f"Expected valid but got errors: {errors}"
+
 
 def test_validate_ohlcv_missing_column(sample_df):
     broken = sample_df.drop(columns=["volume"])
@@ -99,11 +113,13 @@ def test_validate_ohlcv_missing_column(sample_df):
     assert not is_valid
     assert any("volume" in e for e in errors)
 
+
 def test_validate_ohlcv_negative_price(sample_df):
     broken = sample_df.copy()
     broken.loc[5, "close"] = -100.0
     is_valid, errors = validate_ohlcv(broken)
     assert not is_valid
+
 
 def test_validate_ohlcv_high_less_than_low(sample_df):
     broken = sample_df.copy()
@@ -111,10 +127,12 @@ def test_validate_ohlcv_high_less_than_low(sample_df):
     is_valid, errors = validate_ohlcv(broken)
     assert not is_valid
 
+
 def test_clean_ohlcv_drops_duplicates(sample_df):
     duped = pd.concat([sample_df, sample_df.iloc[:5]], ignore_index=True)
     cleaned = clean_ohlcv(duped)
     assert len(cleaned) == len(sample_df)
+
 
 def test_clean_ohlcv_sorts_timestamps():
     df = make_sample_ohlcv(10)
@@ -122,15 +140,18 @@ def test_clean_ohlcv_sorts_timestamps():
     cleaned = clean_ohlcv(shuffled)
     assert cleaned["timestamp"].is_monotonic_increasing
 
+
 def test_detect_anomalies_flags_spike(sample_df):
     df = sample_df.copy()
     df.loc[10, "close"] = df.loc[9, "close"] * 1.30
     result = detect_anomalies(df)
-    assert result.loc[10, "is_anomaly"] == True
+    assert result.loc[10, "is_anomaly"]
+
 
 def test_detect_anomalies_normal_data(sample_df):
     result = detect_anomalies(sample_df)
     assert result["is_anomaly"].sum() == 0
+
 
 def test_normalize_price_data_columns(sample_df):
     result = normalize_price_data(sample_df)
@@ -140,6 +161,7 @@ def test_normalize_price_data_columns(sample_df):
 
 # --- data/storage tests ---
 
+
 def test_upsert_and_load_candles(sample_df, mem_conn):
     written = upsert_candles("BTC-USD", "1h", sample_df, mem_conn)
     assert written == len(sample_df)
@@ -148,12 +170,14 @@ def test_upsert_and_load_candles(sample_df, mem_conn):
     assert len(loaded) == len(sample_df)
     assert list(loaded.columns[:6]) == ["timestamp", "open", "high", "low", "close", "volume"]
 
+
 def test_upsert_candles_no_duplicates(sample_df, mem_conn):
     upsert_candles("BTC-USD", "1h", sample_df, mem_conn)
     upsert_candles("BTC-USD", "1h", sample_df, mem_conn)
 
     loaded = load_candles("BTC-USD", "1h", days_back=365, conn=mem_conn)
     assert len(loaded) == len(sample_df)
+
 
 def test_price_snapshots(mem_conn):
     upsert_price_snapshot("BTC-USD", 45000.0, mem_conn)
@@ -162,6 +186,7 @@ def test_price_snapshots(mem_conn):
     snapshots = load_price_snapshots(mem_conn)
     assert snapshots["BTC-USD"] == 45000.0
     assert snapshots["ETH-USD"] == 2500.0
+
 
 def test_upsert_updates_existing_snapshot(mem_conn):
     upsert_price_snapshot("BTC-USD", 40000.0, mem_conn)
@@ -173,10 +198,11 @@ def test_upsert_updates_existing_snapshot(mem_conn):
 
 # --- Asset universe tests ---
 
+
 def test_active_assets_phase_7_is_crypto_only():
     """Phase 7 active universe is the 10 crypto assets (5 Coinbase + 5 Birdeye)
     — stocks and forex remain in the repo but are excluded from active trading."""
-    from config.settings import ACTIVE_ASSETS, ASSET_CLASS, STOCK_TICKERS, FOREX_TICKERS
+    from config.settings import ACTIVE_ASSETS, ASSET_CLASS, FOREX_TICKERS, STOCK_TICKERS
 
     assert len(ACTIVE_ASSETS) == 10, f"Expected 10 active assets, got {len(ACTIVE_ASSETS)}"
     for asset in ACTIVE_ASSETS:
@@ -189,9 +215,11 @@ def test_active_assets_phase_7_is_crypto_only():
 
 # --- Integration test (hits live Coinbase API) ---
 
+
 @pytest.mark.integration
 def test_fetch_candles_live():
     from data.historical import fetch_candles
+
     df = fetch_candles("BTC-USD", granularity="1h", days_back=2)
 
     assert not df.empty, "Expected candle data from live API"

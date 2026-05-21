@@ -1,13 +1,19 @@
 import requests
-from config.settings import ASSETS, COINBASE_PUBLIC_URL, REQUEST_TIMEOUT
+
+from config.settings import ACTIVE_ASSETS, ASSET_SOURCE, COINBASE_PUBLIC_URL, REQUEST_TIMEOUT
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# TODO(phase-7-step-4): live polling currently scopes to ACTIVE_ASSETS (Phase 7
+# crypto-only universe). Stocks/forex were never wired up through this code path
+# — yfinance has its own fetcher. Revisit when reintroducing those assets.
+_COINBASE_POLL_ASSETS = [a for a in ACTIVE_ASSETS if ASSET_SOURCE.get(a) == "coinbase"]
+
 
 def _fetch_coinbase_prices() -> dict[str, float]:
     prices = {}
-    for asset in ASSETS:
+    for asset in _COINBASE_POLL_ASSETS:
         try:
             url = f"{COINBASE_PUBLIC_URL}/prices/{asset}/spot"
             response = requests.get(url, timeout=REQUEST_TIMEOUT)
@@ -33,6 +39,7 @@ def fetch_prices() -> dict[str, float]:
 
     try:
         from data.dex_fetcher import fetch_all_dex_prices
+
         dex_prices = fetch_all_dex_prices()
         prices.update(dex_prices)
     except Exception as e:
@@ -47,6 +54,7 @@ def poll_forever(interval_seconds: int = 10) -> None:
     Runs until interrupted with Ctrl+C.
     """
     import time
+
     from data.storage import init_db, upsert_price_snapshot
 
     logger.info(f"Starting live price polling every {interval_seconds}s... (Ctrl+C to stop)")

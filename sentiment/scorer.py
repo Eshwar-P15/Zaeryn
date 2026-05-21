@@ -1,15 +1,16 @@
-from datetime import datetime, timezone
-from utils.logger import get_logger
+from datetime import UTC, datetime
+
 from config.settings import (
-    SENTIMENT_WEIGHTS,
     ALL_ASSETS,
     SENTIMENT_LABELS,
+    SENTIMENT_WEIGHTS,
 )
-from sentiment.fear_greed      import fetch_fear_greed
-from sentiment.dex_sentiment   import fetch_dex_sentiment
-from sentiment.onchain         import fetch_onchain_sentiment
-from sentiment.news            import fetch_news_sentiment
+from sentiment.dex_sentiment import fetch_dex_sentiment
+from sentiment.fear_greed import fetch_fear_greed
+from sentiment.news import fetch_news_sentiment
+from sentiment.onchain import fetch_onchain_sentiment
 from sentiment.twitter_scraper import fetch_twitter_sentiment
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -88,22 +89,22 @@ def compute_sentiment_score(asset: str, include_twitter: bool = False) -> dict:
         components["twitter"] = {"score": 0.0, "confidence": 0.0}
 
     # Weighted aggregation
-    weighted_sum     = 0.0
-    total_weight     = 0.0
+    weighted_sum = 0.0
+    total_weight = 0.0
     component_detail = {}
 
     for source, base_weight in SENTIMENT_WEIGHTS.items():
-        component        = components.get(source, {})
-        source_score     = float(component.get("score",      0.0))
-        source_conf      = float(component.get("confidence", 0.0))
+        component = components.get(source, {})
+        source_score = float(component.get("score", 0.0))
+        source_conf = float(component.get("confidence", 0.0))
         effective_weight = base_weight * source_conf
 
         weighted_sum += source_score * effective_weight
         total_weight += effective_weight
 
         component_detail[source] = {
-            "score":       round(source_score,     4),
-            "confidence":  round(source_conf,      4),
+            "score": round(source_score, 4),
+            "confidence": round(source_conf, 4),
             "base_weight": base_weight,
             "weight_used": round(effective_weight, 4),
         }
@@ -114,16 +115,15 @@ def compute_sentiment_score(asset: str, include_twitter: bool = False) -> dict:
     overall_conf = sum(source_confs) / len(source_confs) if source_confs else 0.0
 
     result = {
-        "asset":      asset,
-        "score":      round(final_score, 4),
-        "label":      score_label(final_score),
+        "asset": asset,
+        "score": round(final_score, 4),
+        "label": score_label(final_score),
         "confidence": round(overall_conf, 4),
         "components": component_detail,
-        "timestamp":  datetime.now(timezone.utc),
+        "timestamp": datetime.now(UTC),
     }
     logger.info(
-        f"Sentiment {asset}: {final_score:+.4f} ({result['label']}) "
-        f"[confidence={overall_conf:.2f}]"
+        f"Sentiment {asset}: {final_score:+.4f} ({result['label']}) [confidence={overall_conf:.2f}]"
     )
     return result
 
@@ -158,7 +158,7 @@ def get_market_sentiment() -> dict:
     return {
         "market_score": round(market_score, 4),
         "market_label": score_label(market_score),
-        "fear_greed":   fg,
+        "fear_greed": fg,
         "asset_scores": asset_scores,
-        "timestamp":    datetime.now(timezone.utc),
+        "timestamp": datetime.now(UTC),
     }

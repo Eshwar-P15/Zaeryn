@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -76,7 +77,9 @@ def clean_ohlcv(df: pd.DataFrame, gap_fill: bool = True) -> pd.DataFrame:
                 large_gaps = nan_mask & (group_sizes > MAX_CONSECUTIVE_FILL)
 
                 if large_gaps.any():
-                    logger.warning(f"Large data gap detected in '{col}' - {large_gaps.sum()} unfilled NaNs")
+                    logger.warning(
+                        f"Large data gap detected in '{col}' - {large_gaps.sum()} unfilled NaNs"
+                    )
 
                 df.loc[fillable, col] = df[col].ffill()
 
@@ -93,7 +96,9 @@ def detect_anomalies(df: pd.DataFrame) -> pd.DataFrame:
 
     anomaly_count = df["is_anomaly"].sum()
     if anomaly_count > 0:
-        logger.warning(f"Detected {anomaly_count} anomalous candles (>{ANOMALY_THRESHOLD_PCT}% price jump)")
+        logger.warning(
+            f"Detected {anomaly_count} anomalous candles (>{ANOMALY_THRESHOLD_PCT}% price jump)"
+        )
     else:
         logger.debug("No anomalies detected")
 

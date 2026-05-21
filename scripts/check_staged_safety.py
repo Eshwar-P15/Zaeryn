@@ -187,11 +187,18 @@ _EXAMPLE_HINTS_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Files where absolute local paths are expected by design (and don't represent
+# secrets or portability hazards). Scoped to the path check only — these files
+# are still subject to secrets, size, and other rules.
+_LOCAL_PATH_ALLOWLIST_RE = re.compile(r"^\.claude/.*\.json$")
+
 
 def check_local_paths(added_lines: list[tuple[str | None, int, str]]) -> list[Issue]:
     issues: list[Issue] = []
     for filepath, line_no, content in added_lines:
         if filepath in _SELF_FILES:
+            continue
+        if filepath and _LOCAL_PATH_ALLOWLIST_RE.match(filepath):
             continue
         for pattern in _LOCAL_PATH_PATTERNS:
             if pattern.search(content):

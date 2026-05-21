@@ -1,15 +1,17 @@
 import time
+from datetime import UTC, datetime
+
 import requests
-from datetime import datetime, timezone
+
+from config.settings import REQUEST_RETRY_ATTEMPTS, REQUEST_RETRY_DELAYS, REQUEST_TIMEOUT
 from utils.logger import get_logger
-from config.settings import REQUEST_TIMEOUT, REQUEST_RETRY_ATTEMPTS, REQUEST_RETRY_DELAYS
 
 logger = get_logger(__name__)
 
 FEAR_GREED_URL = "https://api.alternative.me/fng/?limit=1"
 
 FEAR_GREED_LABELS = {
-    (0,  25): "Extreme Fear",
+    (0, 25): "Extreme Fear",
     (25, 45): "Fear",
     (45, 55): "Neutral",
     (55, 75): "Greed",
@@ -45,11 +47,11 @@ def fetch_fear_greed() -> dict:
                     break
 
             result = {
-                "value":      value,
-                "label":      label,
+                "value": value,
+                "label": label,
                 "normalized": round(normalized, 4),
-                "timestamp":  datetime.now(timezone.utc),
-                "source":     "fear_greed",
+                "timestamp": datetime.now(UTC),
+                "source": "fear_greed",
             }
             logger.info(f"Fear & Greed: {value}/100 ({label}) -> {normalized:+.3f}")
             return result
@@ -60,10 +62,10 @@ def fetch_fear_greed() -> dict:
 
     logger.error(f"Fear & Greed: all retries failed. Returning neutral. Error: {last_error}")
     return {
-        "value":      50,
-        "label":      "Neutral",
+        "value": 50,
+        "label": "Neutral",
         "normalized": 0.0,
-        "timestamp":  datetime.now(timezone.utc),
-        "source":     "fear_greed",
-        "error":      str(last_error),
+        "timestamp": datetime.now(UTC),
+        "source": "fear_greed",
+        "error": str(last_error),
     }

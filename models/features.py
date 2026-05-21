@@ -2,17 +2,17 @@ import numpy as np
 import pandas as pd
 import ta
 
-from utils.logger import get_logger
 from config.settings import (
+    ANNUALIZATION_FACTOR,
     FEATURE_COLUMNS,
     FEATURE_WINDOWS,
+    MODEL_HISTORY_DAYS,
     MODEL_HORIZON,
     MODEL_MIN_ROWS,
-    MODEL_HISTORY_DAYS,
-    ANNUALIZATION_FACTOR,
 )
-from data.storage import load_candles, init_db
 from data.cleaner import clean_ohlcv, normalize_price_data
+from data.storage import init_db, load_candles
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -32,25 +32,17 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     Returns: df copy with additional columns added.
     """
     df = df.copy()
-    w  = FEATURE_WINDOWS
+    w = FEATURE_WINDOWS
 
     # -- Trend Indicators ------------------------------------------------------
 
-    df["sma_20"] = ta.trend.SMAIndicator(
-        close=df["close"], window=w["sma_short"]
-    ).sma_indicator()
+    df["sma_20"] = ta.trend.SMAIndicator(close=df["close"], window=w["sma_short"]).sma_indicator()
 
-    df["sma_50"] = ta.trend.SMAIndicator(
-        close=df["close"], window=w["sma_long"]
-    ).sma_indicator()
+    df["sma_50"] = ta.trend.SMAIndicator(close=df["close"], window=w["sma_long"]).sma_indicator()
 
-    df["ema_12"] = ta.trend.EMAIndicator(
-        close=df["close"], window=w["ema_fast"]
-    ).ema_indicator()
+    df["ema_12"] = ta.trend.EMAIndicator(close=df["close"], window=w["ema_fast"]).ema_indicator()
 
-    df["ema_26"] = ta.trend.EMAIndicator(
-        close=df["close"], window=w["ema_slow"]
-    ).ema_indicator()
+    df["ema_26"] = ta.trend.EMAIndicator(close=df["close"], window=w["ema_slow"]).ema_indicator()
 
     _macd = ta.trend.MACD(
         close=df["close"],
@@ -58,9 +50,9 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
         window_fast=w["ema_fast"],
         window_sign=w["macd_signal"],
     )
-    df["macd"]        = _macd.macd()
+    df["macd"] = _macd.macd()
     df["macd_signal"] = _macd.macd_signal()
-    df["macd_hist"]   = _macd.macd_diff()
+    df["macd_hist"] = _macd.macd_diff()
 
     df["price_vs_sma20"] = np.where(
         df["sma_20"].notna() & (df["sma_20"] > 0),
@@ -70,13 +62,9 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     # -- Momentum Indicators ---------------------------------------------------
 
-    df["rsi_14"] = ta.momentum.RSIIndicator(
-        close=df["close"], window=w["rsi"]
-    ).rsi()
+    df["rsi_14"] = ta.momentum.RSIIndicator(close=df["close"], window=w["rsi"]).rsi()
 
-    df["roc_10"] = ta.momentum.ROCIndicator(
-        close=df["close"], window=w["roc"]
-    ).roc()
+    df["roc_10"] = ta.momentum.ROCIndicator(close=df["close"], window=w["roc"]).roc()
 
     # Williams %R range is [-100, 0] — negative values are correct
     df["williams_r_14"] = ta.momentum.WilliamsRIndicator(
@@ -100,18 +88,15 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
         window=w["bb"],
         window_dev=2,
     )
-    df["bb_upper"]    = _bb.bollinger_hband()
-    df["bb_lower"]    = _bb.bollinger_lband()
-    df["bb_width"]    = _bb.bollinger_wband()
+    df["bb_upper"] = _bb.bollinger_hband()
+    df["bb_lower"] = _bb.bollinger_lband()
+    df["bb_width"] = _bb.bollinger_wband()
     df["bb_position"] = _bb.bollinger_pband()
 
     # Realized volatility — annualized rolling std of log_returns
     # log_returns already exists from normalize_price_data()
-    df["realized_vol_20"] = (
-        df["log_returns"]
-        .rolling(window=w["realized_vol"])
-        .std()
-        * np.sqrt(ANNUALIZATION_FACTOR)
+    df["realized_vol_20"] = df["log_returns"].rolling(window=w["realized_vol"]).std() * np.sqrt(
+        ANNUALIZATION_FACTOR
     )
 
     # -- Volume Indicators -----------------------------------------------------
@@ -125,12 +110,12 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # OBV normalized to z-score — raw OBV is not scale-invariant (Rule 8)
-    _obv_raw  = ta.volume.OnBalanceVolumeIndicator(
+    _obv_raw = ta.volume.OnBalanceVolumeIndicator(
         close=df["close"],
         volume=df["volume"],
     ).on_balance_volume()
     _obv_mean = _obv_raw.rolling(w["obv_norm"]).mean()
-    _obv_std  = _obv_raw.rolling(w["obv_norm"]).std()
+    _obv_std = _obv_raw.rolling(w["obv_norm"]).std()
     df["obv"] = np.where(
         _obv_std > 0,
         (_obv_raw - _obv_mean) / _obv_std,
@@ -139,9 +124,9 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     # VWAP ratio — close / rolling VWAP (scale-invariant)
     # Guard: zero volume windows (Rule 5)
-    _vwap_num  = (df["close"] * df["volume"]).rolling(w["vwap"]).sum()
-    _vwap_den  = df["volume"].rolling(w["vwap"]).sum()
-    _vwap      = np.where(_vwap_den > 0, _vwap_num / _vwap_den, df["close"])
+    _vwap_num = (df["close"] * df["volume"]).rolling(w["vwap"]).sum()
+    _vwap_den = df["volume"].rolling(w["vwap"]).sum()
+    _vwap = np.where(_vwap_den > 0, _vwap_num / _vwap_den, df["close"])
     df["vwap_ratio"] = np.where(
         _vwap > 0,
         df["close"] / _vwap,
@@ -151,8 +136,8 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # -- Time Features ---------------------------------------------------------
 
     df["hour_of_day"] = df["timestamp"].dt.hour.astype(float)
-    df["day_of_week"]  = df["timestamp"].dt.dayofweek.astype(float)
-    df["is_weekend"]   = (df["day_of_week"] >= 5).astype(float)
+    df["day_of_week"] = df["timestamp"].dt.dayofweek.astype(float)
+    df["is_weekend"] = (df["day_of_week"] >= 5).astype(float)
 
     # -- New Features ----------------------------------------------------------
 
@@ -193,9 +178,7 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # MACD histogram momentum: acceleration/deceleration of momentum
     df["macd_hist_momentum"] = df["macd_hist"].diff()
 
-    logger.debug(
-        f"compute_technical_indicators: {len(df.columns)} total columns, {len(df)} rows"
-    )
+    logger.debug(f"compute_technical_indicators: {len(df.columns)} total columns, {len(df)} rows")
     return df
 
 
@@ -216,12 +199,8 @@ def compute_targets(df: pd.DataFrame, horizon: int = MODEL_HORIZON) -> pd.DataFr
     # Target volatility: vol of log_returns over the NEXT horizon candles
     # shift(-1) → position t contains log_return[t+1]
     # rolling(horizon) at position t+horizon-1 → std of [t+1 .. t+horizon]
-    df["target_volatility"] = (
-        df["log_returns"]
-        .shift(-1)
-        .rolling(window=horizon)
-        .std()
-        * np.sqrt(ANNUALIZATION_FACTOR)
+    df["target_volatility"] = df["log_returns"].shift(-1).rolling(window=horizon).std() * np.sqrt(
+        ANNUALIZATION_FACTOR
     )
 
     # Target direction: 1.0 if price at t+horizon > price at t, else 0.0
@@ -311,7 +290,7 @@ def build_feature_matrix(
             )
             return None
 
-        X     = df[FEATURE_COLUMNS].copy()
+        X = df[FEATURE_COLUMNS].copy()
         y_vol = df["target_volatility"].copy()
         y_dir = df["target_direction"].copy()
 

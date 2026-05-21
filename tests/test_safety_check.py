@@ -161,6 +161,24 @@ def test_local_paths_windows_drive_fails():
     assert safety.check_local_paths(lines) != []
 
 
+def test_local_paths_claude_settings_allowlisted():
+    # .claude/settings.local.json legitimately stores per-project tool allowlist
+    # entries containing absolute paths — they aren't secrets.
+    lines = [
+        (".claude/settings.local.json", 33, '      "Bash(ls /home/epala/dev/Zaeryn/*)"'),
+        (".claude/settings.json", 5, '      "Read(/home/epala/dev/Zaeryn/**)"'),
+    ]
+    assert safety.check_local_paths(lines) == []
+
+
+def test_local_paths_claude_allowlist_does_not_leak_to_other_files():
+    # The same content in a non-.claude file must still be flagged.
+    lines = [("models/trend.py", 10, 'allowed = "/home/epala/dev/Zaeryn/data.csv"')]
+    issues = safety.check_local_paths(lines)
+    assert len(issues) == 1
+    assert issues[0].category == "path"
+
+
 # -- debug artifacts (warnings only) ------------------------------------------
 
 

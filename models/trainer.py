@@ -1,17 +1,18 @@
 import os
 import time
-import joblib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from utils.logger import get_logger
+import joblib
+
 from config.settings import (
     ALL_ASSETS,
-    MODEL_SAVE_DIR,
     MODEL_HORIZON,
+    MODEL_SAVE_DIR,
 )
-from models.volatility import VolatilityPredictor
+from data.storage import load_candles
 from models.trend import TrendClassifier
-from data.storage import load_candles, init_db
+from models.volatility import VolatilityPredictor
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -39,7 +40,7 @@ def train_all_models(
     results = {}
 
     for asset in assets:
-        logger.info(f"\n{'─'*50}\nTraining: {asset}\n{'─'*50}")
+        logger.info(f"\n{'─' * 50}\nTraining: {asset}\n{'─' * 50}")
         asset_result = {}
         t0 = time.time()
 
@@ -48,12 +49,10 @@ def train_all_models(
         try:
             if not force_retrain and os.path.exists(vol_path):
                 logger.info(f"[{asset}] VolatilityPredictor: loading from disk")
-                asset_result["volatility"] = {
-                    "loaded_from_disk": True, "path": vol_path
-                }
+                asset_result["volatility"] = {"loaded_from_disk": True, "path": vol_path}
             else:
                 predictor = VolatilityPredictor(horizon=horizon)
-                metrics   = predictor.train(asset, days_back=days_back)
+                metrics = predictor.train(asset, days_back=days_back)
                 predictor.save(vol_path)
                 asset_result["volatility"] = metrics
 
@@ -69,12 +68,10 @@ def train_all_models(
         try:
             if not force_retrain and os.path.exists(trend_path):
                 logger.info(f"[{asset}] TrendClassifier: loading from disk")
-                asset_result["trend"] = {
-                    "loaded_from_disk": True, "path": trend_path
-                }
+                asset_result["trend"] = {"loaded_from_disk": True, "path": trend_path}
             else:
                 classifier = TrendClassifier(horizon=horizon)
-                metrics    = classifier.train(asset, days_back=days_back)
+                metrics = classifier.train(asset, days_back=days_back)
                 classifier.save(trend_path)
                 asset_result["trend"] = metrics
 
@@ -89,9 +86,9 @@ def train_all_models(
         results[asset] = asset_result
 
     trained = sum(
-        1 for r in results.values()
-        if "mae" in r.get("volatility", {})
-        or r.get("volatility", {}).get("loaded_from_disk")
+        1
+        for r in results.values()
+        if "mae" in r.get("volatility", {}) or r.get("volatility", {}).get("loaded_from_disk")
     )
     logger.info(f"Batch complete: {trained}/{len(assets)} assets have models")
     return results
@@ -113,15 +110,15 @@ def evaluate_model_health(asset: str) -> dict:
         }
     """
     result = {
-        "asset":                 asset,
-        "models_exist":          False,
+        "asset": asset,
+        "models_exist": False,
         "volatility_prediction": None,
-        "trend":                 None,
-        "vol_model_age_hours":   None,
+        "trend": None,
+        "vol_model_age_hours": None,
         "trend_model_age_hours": None,
     }
 
-    vol_path   = VolatilityPredictor.model_path(asset)
+    vol_path = VolatilityPredictor.model_path(asset)
     trend_path = TrendClassifier.model_path(asset)
 
     if not (os.path.exists(vol_path) and os.path.exists(trend_path)):
@@ -141,7 +138,7 @@ def evaluate_model_health(asset: str) -> dict:
 
         vol_payload = joblib.load(vol_path)
         if vol_payload.get("trained_at"):
-            age = (datetime.now(timezone.utc) - vol_payload["trained_at"]).total_seconds() / 3600
+            age = (datetime.now(UTC) - vol_payload["trained_at"]).total_seconds() / 3600
             result["vol_model_age_hours"] = round(age, 1)
 
         trend_model = TrendClassifier()
@@ -150,7 +147,7 @@ def evaluate_model_health(asset: str) -> dict:
 
         trend_payload = joblib.load(trend_path)
         if trend_payload.get("trained_at"):
-            age = (datetime.now(timezone.utc) - trend_payload["trained_at"]).total_seconds() / 3600
+            age = (datetime.now(UTC) - trend_payload["trained_at"]).total_seconds() / 3600
             result["trend_model_age_hours"] = round(age, 1)
 
     except Exception as e:
@@ -168,10 +165,10 @@ def should_retrain(asset: str, days_threshold: int = 7) -> bool:
     if not os.path.exists(path):
         return True
     try:
-        payload    = joblib.load(path)
+        payload = joblib.load(path)
         trained_at = payload.get("trained_at")
         if trained_at is None:
             return True
-        return (datetime.now(timezone.utc) - trained_at).days >= days_threshold
+        return (datetime.now(UTC) - trained_at).days >= days_threshold
     except Exception:
         return True

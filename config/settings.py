@@ -9,16 +9,14 @@ Adding a new config value: prefer adding a field to the right Settings class in
 """
 
 from config._models import (
-    PROJECT_ROOT,
-    data_settings,
     asset_settings,
+    backtest_settings,
+    birdeye_settings,
+    data_settings,
     model_settings,
     risk_settings,
     sentiment_settings,
-    backtest_settings,
-    birdeye_settings,
 )
-
 
 # -- Asset universe ------------------------------------------------------------
 
@@ -40,11 +38,11 @@ FOREX_TICKERS = list(asset_settings.forex)
 
 # Solana token mint addresses — pure data, kept as module-level dict.
 SOLANA_TOKENS = {
-    "JUP":  "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+    "JUP": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
     "BONK": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
-    "WIF":  "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
+    "WIF": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm",
     "PYTH": "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",
-    "RAY":  "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+    "RAY": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
 }
 
 
@@ -66,12 +64,12 @@ REQUEST_RETRY_DELAYS = data_settings.request_retry_delays
 CANDLE_REQUEST_SLEEP = data_settings.candle_request_sleep
 
 GRANULARITIES = {
-    "1m":  60,
-    "5m":  300,
+    "1m": 60,
+    "5m": 300,
     "15m": 900,
-    "1h":  3600,
-    "6h":  21600,
-    "1d":  86400,
+    "1h": 3600,
+    "6h": 21600,
+    "1d": 86400,
 }
 
 
@@ -82,21 +80,21 @@ GECKOTERMINAL_BASE_URL = "https://api.geckoterminal.com/api/v2"
 GECKOTERMINAL_NETWORK = "solana"
 
 GECKO_GRANULARITIES = {
-    "1m":  "minute",
-    "5m":  "minute",
+    "1m": "minute",
+    "5m": "minute",
     "15m": "minute",
-    "1h":  "hour",
-    "4h":  "hour",
-    "1d":  "day",
+    "1h": "hour",
+    "4h": "hour",
+    "1d": "day",
 }
 
 GECKO_AGGREGATES = {
-    "1m":  1,
-    "5m":  5,
+    "1m": 1,
+    "5m": 5,
     "15m": 15,
-    "1h":  1,
-    "4h":  4,
-    "1d":  1,
+    "1h": 1,
+    "4h": 4,
+    "1d": 1,
 }
 
 GECKO_MAX_CANDLES_PER_REQUEST = 1000
@@ -114,50 +112,50 @@ SENTIMENT_CACHE_TTL = sentiment_settings.cache_ttl_minutes
 SENTIMENT_LABELS = {
     (-1.0, -0.6): "Very Bearish",
     (-0.6, -0.2): "Bearish",
-    (-0.2,  0.2): "Neutral",
-    ( 0.2,  0.6): "Bullish",
-    ( 0.6,  1.0): "Very Bullish",
+    (-0.2, 0.2): "Neutral",
+    (0.2, 0.6): "Bullish",
+    (0.6, 1.0): "Very Bullish",
 }
 
 
 # -- Twitter registry (data table — stays here) --------------------------------
 
 TWITTER_ACCOUNTS = {
-    "aeyakovenko":     {"tier": 1, "weight": 1.5, "assets": ["SOL-USD"]},
-    "rajgokal":        {"tier": 1, "weight": 1.5, "assets": ["SOL-USD"]},
-    "0xMert_":         {"tier": 1, "weight": 1.5, "assets": ["SOL-USD", "all"]},
-    "weremeow":        {"tier": 1, "weight": 1.5, "assets": ["JUP"]},
+    "aeyakovenko": {"tier": 1, "weight": 1.5, "assets": ["SOL-USD"]},
+    "rajgokal": {"tier": 1, "weight": 1.5, "assets": ["SOL-USD"]},
+    "0xMert_": {"tier": 1, "weight": 1.5, "assets": ["SOL-USD", "all"]},
+    "weremeow": {"tier": 1, "weight": 1.5, "assets": ["JUP"]},
     "therealcharlied": {"tier": 1, "weight": 1.4, "assets": ["JUP"]},
-    "armaniferrante":  {"tier": 1, "weight": 1.3, "assets": ["SOL-USD", "all"]},
-    "DefiIgnas":       {"tier": 2, "weight": 1.2, "assets": ["all"]},
-    "HsakaTrades":     {"tier": 2, "weight": 1.2, "assets": ["all"]},
+    "armaniferrante": {"tier": 1, "weight": 1.3, "assets": ["SOL-USD", "all"]},
+    "DefiIgnas": {"tier": 2, "weight": 1.2, "assets": ["all"]},
+    "HsakaTrades": {"tier": 2, "weight": 1.2, "assets": ["all"]},
     "SmallCapScience": {"tier": 2, "weight": 1.2, "assets": ["all"]},
-    "SolBigBrain":     {"tier": 2, "weight": 1.2, "assets": ["SOL-USD", "all"]},
-    "punk9059":        {"tier": 2, "weight": 1.1, "assets": ["SOL-USD", "all"]},
-    "blknoiz06":       {"tier": 3, "weight": 1.0, "assets": ["all"]},
-    "cobie":           {"tier": 3, "weight": 1.0, "assets": ["all"]},
-    "Pentosh1":        {"tier": 3, "weight": 1.0, "assets": ["SOL-USD"]},
-    "CryptoDonAlt":    {"tier": 3, "weight": 1.0, "assets": ["all"]},
+    "SolBigBrain": {"tier": 2, "weight": 1.2, "assets": ["SOL-USD", "all"]},
+    "punk9059": {"tier": 2, "weight": 1.1, "assets": ["SOL-USD", "all"]},
+    "blknoiz06": {"tier": 3, "weight": 1.0, "assets": ["all"]},
+    "cobie": {"tier": 3, "weight": 1.0, "assets": ["all"]},
+    "Pentosh1": {"tier": 3, "weight": 1.0, "assets": ["SOL-USD"]},
+    "CryptoDonAlt": {"tier": 3, "weight": 1.0, "assets": ["all"]},
     "JupiterExchange": {"tier": 4, "weight": 1.3, "assets": ["JUP"]},
-    "bonk_inu":        {"tier": 4, "weight": 1.3, "assets": ["BONK"]},
-    "dogwifcoin":      {"tier": 4, "weight": 1.3, "assets": ["WIF"]},
-    "PythNetwork":     {"tier": 4, "weight": 1.3, "assets": ["PYTH"]},
+    "bonk_inu": {"tier": 4, "weight": 1.3, "assets": ["BONK"]},
+    "dogwifcoin": {"tier": 4, "weight": 1.3, "assets": ["WIF"]},
+    "PythNetwork": {"tier": 4, "weight": 1.3, "assets": ["PYTH"]},
     "RaydiumProtocol": {"tier": 4, "weight": 1.3, "assets": ["RAY"]},
-    "pumpdotfun":      {"tier": 4, "weight": 1.0, "assets": ["all"]},
-    "MeteoraAG":       {"tier": 4, "weight": 1.1, "assets": ["RAY", "JUP"]},
+    "pumpdotfun": {"tier": 4, "weight": 1.0, "assets": ["all"]},
+    "MeteoraAG": {"tier": 4, "weight": 1.1, "assets": ["RAY", "JUP"]},
 }
 
 ASSET_TWITTER_KEYWORDS = {
-    "BTC-USD":  ["$BTC", "Bitcoin", "#Bitcoin"],
-    "ETH-USD":  ["$ETH", "Ethereum", "#Ethereum"],
-    "SOL-USD":  ["$SOL", "Solana", "#Solana"],
+    "BTC-USD": ["$BTC", "Bitcoin", "#Bitcoin"],
+    "ETH-USD": ["$ETH", "Ethereum", "#Ethereum"],
+    "SOL-USD": ["$SOL", "Solana", "#Solana"],
     "AVAX-USD": ["$AVAX", "Avalanche"],
     "LINK-USD": ["$LINK", "Chainlink"],
-    "JUP":      ["$JUP", "Jupiter", "JupiterExchange"],
-    "BONK":     ["$BONK", "bonkinu"],
-    "WIF":      ["$WIF", "dogwifhat"],
-    "PYTH":     ["$PYTH", "PythNetwork"],
-    "RAY":      ["$RAY", "Raydium"],
+    "JUP": ["$JUP", "Jupiter", "JupiterExchange"],
+    "BONK": ["$BONK", "bonkinu"],
+    "WIF": ["$WIF", "dogwifhat"],
+    "PYTH": ["$PYTH", "PythNetwork"],
+    "RAY": ["$RAY", "Raydium"],
 }
 
 
@@ -166,28 +164,28 @@ ASSET_TWITTER_KEYWORDS = {
 NEWSAPI_BASE_URL = "https://newsapi.org/v2/everything"
 
 ASSET_NEWS_KEYWORDS = {
-    "BTC-USD":  "Bitcoin BTC",
-    "ETH-USD":  "Ethereum ETH",
-    "SOL-USD":  "Solana SOL",
+    "BTC-USD": "Bitcoin BTC",
+    "ETH-USD": "Ethereum ETH",
+    "SOL-USD": "Solana SOL",
     "AVAX-USD": "Avalanche AVAX",
     "LINK-USD": "Chainlink LINK",
-    "JUP":      "Jupiter JUP Solana",
-    "BONK":     "BONK Solana memecoin",
-    "WIF":      "dogwifhat WIF Solana",
-    "PYTH":     "Pyth Network PYTH",
-    "RAY":      "Raydium RAY Solana",
-    "AAPL":     "Apple AAPL stock earnings",
-    "TSLA":     "Tesla TSLA stock",
-    "AMZN":     "Amazon AMZN stock",
-    "MSFT":     "Microsoft MSFT stock",
-    "NVDA":     "Nvidia NVDA GPU AI",
-    "GOOGL":    "Google Alphabet GOOGL",
-    "META":     "Meta Facebook META stock",
-    "NFLX":     "Netflix NFLX stock",
-    "EUR-USD":  "Euro dollar EURUSD forex",
-    "GBP-USD":  "British pound sterling GBPUSD",
-    "JPY-USD":  "Japanese yen USDJPY forex",
-    "AUD-USD":  "Australian dollar AUDUSD forex",
+    "JUP": "Jupiter JUP Solana",
+    "BONK": "BONK Solana memecoin",
+    "WIF": "dogwifhat WIF Solana",
+    "PYTH": "Pyth Network PYTH",
+    "RAY": "Raydium RAY Solana",
+    "AAPL": "Apple AAPL stock earnings",
+    "TSLA": "Tesla TSLA stock",
+    "AMZN": "Amazon AMZN stock",
+    "MSFT": "Microsoft MSFT stock",
+    "NVDA": "Nvidia NVDA GPU AI",
+    "GOOGL": "Google Alphabet GOOGL",
+    "META": "Meta Facebook META stock",
+    "NFLX": "Netflix NFLX stock",
+    "EUR-USD": "Euro dollar EURUSD forex",
+    "GBP-USD": "British pound sterling GBPUSD",
+    "JPY-USD": "Japanese yen USDJPY forex",
+    "AUD-USD": "Australian dollar AUDUSD forex",
 }
 
 
@@ -276,14 +274,14 @@ BIRDEYE_HISTORY_DAYS = birdeye_settings.history_days
 # -- yfinance (stocks + forex) -------------------------------------------------
 
 YFINANCE_TICKER_MAP = {
-    "AAPL":    "AAPL",
-    "TSLA":    "TSLA",
-    "AMZN":    "AMZN",
-    "MSFT":    "MSFT",
-    "NVDA":    "NVDA",
-    "GOOGL":   "GOOGL",
-    "META":    "META",
-    "NFLX":    "NFLX",
+    "AAPL": "AAPL",
+    "TSLA": "TSLA",
+    "AMZN": "AMZN",
+    "MSFT": "MSFT",
+    "NVDA": "NVDA",
+    "GOOGL": "GOOGL",
+    "META": "META",
+    "NFLX": "NFLX",
     "EUR-USD": "EURUSD=X",
     "GBP-USD": "GBPUSD=X",
     "JPY-USD": "JPYUSD=X",
