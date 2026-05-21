@@ -1,3 +1,5 @@
+# LEGACY: canonical source of dependencies is pyproject.toml. This file is kept
+# temporarily for backwards compatibility and will be removed in a later ticket.
 requests>=2.31.0
 pandas>=2.0.0
 numpy>=1.24.0

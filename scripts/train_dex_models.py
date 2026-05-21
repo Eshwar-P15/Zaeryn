@@ -2,8 +2,9 @@
 Train models ONLY for DEX tokens (BONK, WIF, PYTH, RAY) on 730 days.
 Do NOT retrain Coinbase assets or JUP.
 """
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import sys
 import os

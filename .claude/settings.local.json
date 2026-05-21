@@ -19,7 +19,18 @@
       "Bash(python -m pytest tests/ -v -m \"not integration\")",
       "Bash(python -m pytest tests/ -v -m \"not integration\" --tb=no -q)",
       "Bash(python -c ' *)",
-      "Bash(python -X utf8 -m pytest tests/test_yfinance.py -v -m \"not integration\")"
+      "Bash(python -X utf8 -m pytest tests/test_yfinance.py -v -m \"not integration\")",
+      "Bash(python3 *)",
+      "Bash(.venv/bin/python -m pytest tests/ --collect-only -q)",
+      "Bash(.venv/bin/python -m pip install -e .[dev])",
+      "Bash(.venv/bin/python -c \"import sys; print\\(sys.path\\)\")",
+      "Bash(uv --version)",
+      "Bash(VIRTUAL_ENV=/home/epala/dev/Zaeryn/.venv uv pip install -e \".[dev]\")",
+      "Bash(VIRTUAL_ENV=/home/epala/dev/Zaeryn/.venv uv pip list)",
+      "Bash(.venv/bin/python -m pytest --collect-only -q)",
+      "Bash(.venv/bin/python *)",
+      "Read(//tmp/**)",
+      "Bash(/home/epala/dev/Zaeryn/.venv/bin/python -c \"from config.settings import DB_PATH; print\\(DB_PATH\\); print\\(DB_PATH.exists\\(\\)\\)\")"
     ]
   }
 }

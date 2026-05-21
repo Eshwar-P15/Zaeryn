@@ -1,7 +1,8 @@
 import sqlite3
+from pathlib import Path
 import pandas as pd
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Optional, Union
 
 from config.settings import DB_PATH
 from utils.logger import get_logger
@@ -39,8 +40,8 @@ CREATE INDEX IF NOT EXISTS idx_candles_asset_time
 """
 
 
-def init_db(db_path: str = DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path)
+def init_db(db_path: Union[str, Path] = DB_PATH) -> sqlite3.Connection:
+    conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
 
     cursor = conn.cursor()

@@ -1,9 +1,10 @@
 import sys
 import os
+from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from config.settings import ALL_ASSETS, MAX_POSITION_PCT
 from utils.logger import get_logger

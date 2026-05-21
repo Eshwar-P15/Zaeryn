@@ -17,8 +17,9 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from config.settings import STOCK_TICKERS, FOREX_TICKERS, YFINANCE_MAX_DAYS_1H
 from utils.logger import get_logger

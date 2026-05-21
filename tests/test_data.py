@@ -171,6 +171,22 @@ def test_upsert_updates_existing_snapshot(mem_conn):
     assert snapshots["BTC-USD"] == 50000.0
 
 
+# --- Asset universe tests ---
+
+def test_active_assets_phase_7_is_crypto_only():
+    """Phase 7 active universe is the 10 crypto assets (5 Coinbase + 5 Birdeye)
+    — stocks and forex remain in the repo but are excluded from active trading."""
+    from config.settings import ACTIVE_ASSETS, ASSET_CLASS, STOCK_TICKERS, FOREX_TICKERS
+
+    assert len(ACTIVE_ASSETS) == 10, f"Expected 10 active assets, got {len(ACTIVE_ASSETS)}"
+    for asset in ACTIVE_ASSETS:
+        assert ASSET_CLASS[asset] == "crypto", f"{asset} in ACTIVE_ASSETS but not crypto"
+    for t in STOCK_TICKERS:
+        assert t not in ACTIVE_ASSETS, f"Stock {t} leaked into ACTIVE_ASSETS"
+    for t in FOREX_TICKERS:
+        assert t not in ACTIVE_ASSETS, f"Forex {t} leaked into ACTIVE_ASSETS"
+
+
 # --- Integration test (hits live Coinbase API) ---
 
 @pytest.mark.integration

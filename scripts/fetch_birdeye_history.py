@@ -17,8 +17,9 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from config.settings import SOLANA_TOKENS, BIRDEYE_API_KEY, BIRDEYE_HISTORY_DAYS
 from utils.logger import get_logger
