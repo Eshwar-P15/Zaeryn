@@ -1,16 +1,17 @@
 import os
 import time
+
 import requests
-from utils.logger import get_logger
+
 from config.settings import (
-    HELIUS_BASE_URL,
-    HELIUS_API_BASE,
-    SOLANA_TOKENS,
     ASSET_SOURCE,
-    REQUEST_TIMEOUT,
+    HELIUS_BASE_URL,
     REQUEST_RETRY_ATTEMPTS,
     REQUEST_RETRY_DELAYS,
+    REQUEST_TIMEOUT,
+    SOLANA_TOKENS,
 )
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -32,16 +33,16 @@ def _helius_post(payload: dict) -> dict:
         except Exception as e:
             last_error = e
             safe_msg = str(e).replace(api_key, "***")
-            logger.warning(f"Helius RPC failed (attempt {attempt+1}): {safe_msg}")
+            logger.warning(f"Helius RPC failed (attempt {attempt + 1}): {safe_msg}")
     raise RuntimeError(f"Helius RPC all retries failed: {str(last_error).replace(api_key, '***')}")
 
 
 def fetch_token_holders(mint_address: str, limit: int = 20) -> list[dict]:
     payload = {
         "jsonrpc": "2.0",
-        "id":      "zaeryn-holders",
-        "method":  "getTokenLargestAccounts",
-        "params":  [mint_address],
+        "id": "zaeryn-holders",
+        "method": "getTokenLargestAccounts",
+        "params": [mint_address],
     }
     try:
         result = _helius_post(payload)
@@ -55,9 +56,9 @@ def fetch_token_holders(mint_address: str, limit: int = 20) -> list[dict]:
 def fetch_token_supply(mint_address: str) -> float:
     payload = {
         "jsonrpc": "2.0",
-        "id":      "zaeryn-supply",
-        "method":  "getTokenSupply",
-        "params":  [mint_address],
+        "id": "zaeryn-supply",
+        "method": "getTokenSupply",
+        "params": [mint_address],
     }
     try:
         result = _helius_post(payload)
@@ -82,9 +83,9 @@ def compute_whale_concentration(holders: list[dict], total_supply: float) -> flo
         if ui is not None:
             return float(ui)
         try:
-            raw      = int(h.get("amount", 0) or 0)
+            raw = int(h.get("amount", 0) or 0)
             decimals = int(h.get("decimals", 0) or 0)
-            return raw / (10 ** decimals) if decimals >= 0 else float(raw)
+            return raw / (10**decimals) if decimals >= 0 else float(raw)
         except Exception:
             return 0.0
 
@@ -102,15 +103,17 @@ def fetch_onchain_sentiment(asset: str) -> dict:
         40-60%: -0.3 (concentrated)
         > 60%: -0.6 (extreme concentration / whale dump risk)
 
-    Coinbase assets always return neutral.
+    Coinbase / stock / forex assets always return neutral. Solana tokens
+    route via `"birdeye"` (post Phase 1.5) — they must still flow through
+    the Helius path. See docs/repo_audit.md §8.
     """
-    if ASSET_SOURCE.get(asset) != "dex":
+    if ASSET_SOURCE.get(asset) not in ("dex", "birdeye"):
         return {
-            "score":      0.0,
+            "score": 0.0,
             "confidence": 0.0,
-            "source":     "onchain",
-            "asset":      asset,
-            "note":       "coinbase asset - no on-chain analysis",
+            "source": "onchain",
+            "asset": asset,
+            "note": "non-solana asset - no on-chain analysis",
         }
 
     mint_address = SOLANA_TOKENS.get(asset)
@@ -122,10 +125,10 @@ def fetch_onchain_sentiment(asset: str) -> dict:
         return _null_result(asset, "no API key")
 
     try:
-        holders      = fetch_token_holders(mint_address, limit=20)
+        holders = fetch_token_holders(mint_address, limit=20)
         total_supply = fetch_token_supply(mint_address)
         holder_count = len(holders)
-        whale_pct    = compute_whale_concentration(holders, total_supply)
+        whale_pct = compute_whale_concentration(holders, total_supply)
 
         if whale_pct < 20:
             whale_score = 0.3
@@ -137,16 +140,16 @@ def fetch_onchain_sentiment(asset: str) -> dict:
             whale_score = -0.6
 
         final_score = max(-1.0, min(1.0, whale_score))
-        confidence  = 0.8 if holder_count >= 5 else 0.3
+        confidence = 0.8 if holder_count >= 5 else 0.3
 
         result = {
-            "score":               round(final_score, 4),
+            "score": round(final_score, 4),
             "whale_concentration": whale_pct,
-            "holder_count":        holder_count,
-            "total_supply":        total_supply,
-            "confidence":          confidence,
-            "source":              "onchain",
-            "asset":               asset,
+            "holder_count": holder_count,
+            "total_supply": total_supply,
+            "confidence": confidence,
+            "source": "onchain",
+            "asset": asset,
         }
         logger.info(
             f"On-chain {asset}: {final_score:+.3f} "
