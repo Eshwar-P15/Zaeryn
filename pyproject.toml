@@ -61,3 +61,17 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
+ignore = [
+    "E501",  # line length — ruff format handles width
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]                  # allow `assert False` in tests
+"tests/test_sentiment.py" = ["E402"]  # nltk corpora must be ensured before importing sentiment modules
+"scripts/*" = ["E402"]                # imports after sys.path manipulation, until Ticket 3's followup removes the shims
+"**/__init__.py" = ["F401", "I001"]   # package re-exports are not "unused"
+
+[tool.ruff.format]
