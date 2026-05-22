@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -8,20 +9,45 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
+import mlflow
+
 from config.settings import ALL_ASSETS, MODEL_HORIZON, MODEL_SAVE_DIR
 from models.trainer import evaluate_model_health, train_all_models
 from utils.logger import get_logger
+from utils.mlflow_runner import init_mlflow
 
 logger = get_logger("train_models")
-FORCE = "--retrain" in sys.argv
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train ZAERYN trend + volatility models.")
+    parser.add_argument(
+        "--retrain",
+        action="store_true",
+        help="Force retraining even if a saved model exists on disk.",
+    )
+    parser.add_argument(
+        "--mlflow-experiment",
+        default="zaeryn_training",
+        help="MLflow experiment name to log runs under (default: zaeryn_training).",
+    )
+    return parser.parse_args(argv)
 
 
 def main():
+    args = _parse_args()
+    force = args.retrain
+
+    init_mlflow(args.mlflow_experiment)
+    tracking_uri = mlflow.get_tracking_uri()
+    print(f"MLflow tracking: {tracking_uri}")
+    print(f"MLflow experiment: {args.mlflow_experiment}")
+
     print("\n" + "=" * 70)
     print("  ZAERYN — Phase 3 Model Training")
     print(f"  Horizon:       {MODEL_HORIZON} candles ({MODEL_HORIZON}h ahead)")
     print(f"  Assets:        {len(ALL_ASSETS)}")
-    print(f"  Force retrain: {FORCE}")
+    print(f"  Force retrain: {force}")
     print("=" * 70 + "\n")
 
     os.makedirs(MODEL_SAVE_DIR, exist_ok=True)
@@ -30,7 +56,7 @@ def main():
         assets=ALL_ASSETS,
         horizon=MODEL_HORIZON,
         days_back=730,
-        force_retrain=FORCE,
+        force_retrain=force,
     )
 
     # -- Metrics table ---------------------------------------------------------
@@ -96,6 +122,8 @@ def main():
         skipped = len(ALL_ASSETS) - trained
         print(f"  ⚠  {trained}/{len(ALL_ASSETS)} trained | {skipped} skipped")
         print("  Skipped assets need more history — run fetch_history.py")
+    print(f"{'=' * 70}")
+    print(f"  Inspect runs: mlflow ui --backend-store-uri {tracking_uri}")
     print(f"{'=' * 70}\n")
 
 
