@@ -78,6 +78,9 @@ def test_no_duplicate_columns():
     ), f"Duplicate columns: {[c for c in cols if cols.count(c) > 1]}"
 
 
+# The comprehensive 29-feature × 5-input-column leakage sweep lives at the
+# bottom of this file (test_feature_does_not_see_future). This targeted check
+# uses a separate DataFrame-only mechanic and is retained as a fast smoke test.
 def test_no_future_leakage_in_features():
     """
     Changing only the last row's close must not affect row[-2] features.
@@ -425,3 +428,114 @@ def test_train_trend_btc_live():
         assert m["auc"] >= 0.40, "AUC below 0.40 — feature pipeline may be broken"
     except RuntimeError as e:
         pytest.skip(str(e))
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Leakage sweep — 29 features × 5 input columns = 145 cases
+# Phase 7 Step 1 Ticket 7, audit finding 13.7.
+# ════════════════════════════════════════════════════════════════════════════
+#
+# Definition of leakage: mutating a FUTURE row's raw input must not change a
+# PAST row's feature value. We mutate row[-1] (the very last candle) and assert
+# that the feature value at row[-10] is unchanged. Any feature that changes is
+# reading data from outside its own backward-looking lookback window.
+#
+# Performance: build_feature_matrix over 350 rows costs ~30ms. A naive per-test
+# design would do 145 × 2 = 290 builds (~9s). The module-scoped fixture below
+# builds it exactly 6 times (1 baseline + 5 mutated, one per input column) and
+# parametrized tests just look up the precomputed matrices. Total sweep cost:
+# ~6 × 30ms = 180ms heavy + 145 × <1ms cheap ≈ <1s.
+
+LEAKAGE_INPUT_COLUMNS = ["open", "high", "low", "close", "volume"]
+LEAKAGE_TEST_ROW = -10
+
+
+def _build_X_from_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
+    """Run df through the full pipeline via an in-memory SQLite DB."""
+    from data.storage import init_db, upsert_candles
+    from models.features import build_feature_matrix
+
+    conn = init_db(":memory:")
+    upsert_candles("TEST-USD", "1h", df, conn)
+    result = build_feature_matrix("TEST-USD", granularity="1h", days_back=60, conn=conn)
+    conn.close()
+    assert result is not None, "synthetic data should yield a feature matrix"
+    X, _y_vol, _y_dir = result
+    return X
+
+
+def _mutate_last_row(df: pd.DataFrame, column: str) -> None:
+    """Mutate the last row's `column`, then re-clamp OHLC invariants at that row only.
+
+    Mutations are large enough to be unmissable (+1000 for prices ≈ +2.5% of
+    a $40k starting price; ×10 for volume). Patching `high` and `low` AFTER the
+    mutation prevents indicators like atr_14 / adx_14 from producing garbage
+    NaNs that could mask real leakage. Patch scope is row[-1] only, so the
+    blast radius cannot reach row[-10].
+    """
+    idx = df.index[-1]
+    if column == "volume":
+        df.loc[idx, column] = df.loc[idx, column] * 10
+    else:
+        df.loc[idx, column] = df.loc[idx, column] + 1000.0
+
+    o = df.loc[idx, "open"]
+    h = df.loc[idx, "high"]
+    low = df.loc[idx, "low"]
+    c = df.loc[idx, "close"]
+    df.loc[idx, "high"] = max(o, h, low, c)
+    df.loc[idx, "low"] = min(o, h, low, c)
+
+
+@pytest.fixture(scope="module")
+def baseline_ohlcv() -> pd.DataFrame:
+    """
+    500-row deterministic OHLCV. Built once, deep-copied per mutation below.
+
+    500 rows survives MODEL_MIN_ROWS=300 with margin after the dropna that
+    removes the yearly_position warmup (rolling window 8760, min_periods=100)
+    plus the trailing MODEL_HORIZON rows lost to forward-looking targets.
+    """
+    return make_ohlcv(500, seed=42)
+
+
+@pytest.fixture(scope="module")
+def feature_matrices(baseline_ohlcv) -> dict:
+    """{None: baseline X, "open": mutated X, "high": ..., ...} — 6 builds total."""
+    matrices = {None: _build_X_from_ohlcv(baseline_ohlcv.copy(deep=True))}
+    for col in LEAKAGE_INPUT_COLUMNS:
+        mutated = baseline_ohlcv.copy(deep=True)
+        _mutate_last_row(mutated, col)
+        matrices[col] = _build_X_from_ohlcv(mutated)
+    return matrices
+
+
+@pytest.mark.parametrize("mutated_column", LEAKAGE_INPUT_COLUMNS)
+@pytest.mark.parametrize("feature", FEATURE_COLUMNS)
+def test_feature_does_not_see_future(feature_matrices, feature, mutated_column):
+    """
+    Mutating row[-1]'s `mutated_column` must not change `feature` at row[-10].
+    A failure means `feature`'s computation is reading forward in time.
+
+    Parametrization produces 29 × 5 = 145 cases. Test IDs are
+    `test_feature_does_not_see_future[<feature>-<mutated_column>]`, so any
+    failure names the exact leaking (feature, input) pair.
+    """
+    baseline_X = feature_matrices[None]
+    mutated_X = feature_matrices[mutated_column]
+
+    # Sanity: both runs must produce the same row count, otherwise the iloc
+    # comparison is meaningless. Equal row counts confirm dropna behaved
+    # identically on both runs.
+    assert len(baseline_X) == len(mutated_X), (
+        f"Row count diverged: baseline={len(baseline_X)}, "
+        f"mutated[{mutated_column}]={len(mutated_X)}"
+    )
+
+    v_base = baseline_X[feature].iloc[LEAKAGE_TEST_ROW]
+    v_mut = mutated_X[feature].iloc[LEAKAGE_TEST_ROW]
+
+    assert abs(v_base - v_mut) < 1e-6, (
+        f"Leakage: feature '{feature}' at row[{LEAKAGE_TEST_ROW}] changed "
+        f"({v_base} → {v_mut}) when row[-1] '{mutated_column}' was mutated."
+    )
