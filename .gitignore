@@ -24,3 +24,6 @@ scripts/best_params.json
 scripts/optimize_models.py
 
 scripts/patch_model_metrics.py
+
+# Claude Code per-machine local settings (contains absolute paths)
+.claude/*.local.json
