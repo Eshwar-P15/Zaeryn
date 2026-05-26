@@ -235,6 +235,12 @@ Four strategies compete: MACD Cross, RSI Mean Reversion, Bollinger Band, ZAERYN 
 - JUP, BONK, and PYTH have fewer than 10 trades in the 90-day backtest window — statistically limited.
 - Sentiment is used in real-time risk scoring but not as an ML training feature because no historical sentiment cache exists yet.
 
+### Survivorship bias
+
+All ZAERYN performance numbers are computed on the surviving subset of each data source's universe: only assets still listed on Coinbase, still indexed by Birdeye, or still queryable on yfinance at the time we fetched are represented. Tokens that rug-pulled, equities that delisted, and pairs that exited their venue between the start of their history and the fetch date are absent from the dataset and therefore from every Sharpe, Sortino, win rate, and per-asset accuracy figure reported. This omission is systematic, not random — it inflates every backward-looking metric by an unknown amount proportional to each asset class's true historical failure rate, and the inflation grows once universe-relative features (cross-sectional rank, dispersion, beta) enter the pipeline in Phase 10. Survivorship correction via point-in-time listings data is a Phase 10 deliverable; until that lands, treat the present numbers as a ceiling, not an expectation.
+
+Full details: `docs/data_integrity_audit.md` → "Survivorship bias (T4)".
+
 ---
 
 ## What's next

@@ -11,7 +11,7 @@ fill-time (T5) findings live in their own sections.
 | T1 (this doc + scaffold) | main agent | DONE |
 | T2 (per-family audit, 6 subagents) | parallel subagents | DONE |
 | T3 (cross-asset alignment) | main agent | DONE |
-| T4 (survivorship bias) | TBD | PENDING |
+| T4 (survivorship bias) | main agent | DONE |
 | T5 (backtest fill-time) | TBD | PENDING |
 | T6 (triage + remediation tickets) | main agent | PENDING |
 
@@ -1259,7 +1259,231 @@ unchanged.
   test makes such violations fail loudly at PR time.
 
 ## Survivorship bias (T4)
-(empty)
+
+### T4 scope statement
+
+T4 names survivorship bias as a known, accepted limitation of
+ZAERYN's current data infrastructure, not a defect to be fixed in
+Phase 7. No code change is in scope: every operational fix requires
+point-in-time listings infrastructure that does not exist in the
+repo today and is deferred to Phase 10. T4's deliverable is purely
+documentary — naming the specific mechanisms by which survivorship
+enters, the outputs whose interpretation depends on it, the partial
+mitigations already in place, and the deferred fix. The goal is
+that any future reader of ZAERYN's backtest, training, or
+risk-scoring results understands what universe those results were
+computed on and how the universe was selected.
+
+### Mechanisms of bias entry
+
+ZAERYN ingests OHLCV data from four sources, all of which are
+present-biased by construction (only currently-observable assets
+return data). The local SQLite store (`data/storage.py`) faithfully
+persists whatever those sources return, which means every dataset
+ZAERYN trains, backtests, or risk-scores on inherits the source's
+selection rule.
+
+**Coinbase Exchange (`data/historical.py:24-115`).**
+- *Selection rule:* `GET /products/{product_id}/candles` returns
+  candles only for products currently listed on the venue.
+  Delisting a pair removes both spot trading and historical-candle
+  access.
+- *What is silently missing:* assets that were listed and traded
+  during the training window but are no longer available — pairs
+  removed during Coinbase's periodic delisting purges (dozens since
+  2022), USD-vs-USDC duplicates that have been consolidated, and
+  any asset that exited US-regulated venues during the SEC
+  token-classification cycle.
+- *Severity for the active ZAERYN universe:* low-to-medium. The
+  five active Coinbase assets (BTC-USD, ETH-USD, SOL-USD, AVAX-USD,
+  LINK-USD per `config/_models.py:54-56`) are large-cap survivors
+  with near-zero delisting probability over the training window.
+  But the active universe itself was selected by survivor logic:
+  assets that *would have been* candidates but had liquidity or
+  listing problems never entered the candidate list.
+
+**Birdeye Solana DEX (`data/birdeye_fetcher.py`).**
+- *Selection rule:* Birdeye indexes only tokens with observable
+  pools on Solana DEXes (Raydium, Orca, Meteora, etc.). A token
+  abandoned before Birdeye scraped its first pool, or whose pool
+  liquidity dropped below the indexing threshold, is unqueryable.
+- *What is silently missing:* the dominant mode of Solana DEX
+  activity in 2023-2024 — meme tokens that launched, ran briefly,
+  and rug-pulled within hours. The active universe (JUP, BONK,
+  WIF, PYTH, RAY per `config/_models.py:57`) is the survivor set
+  of pumpfun-era launches. For every JUP and BONK that survived
+  to be a tradeable asset, an unknown but much larger population
+  did not, and none of them are in `zaeryn.db`.
+- *Severity for the active ZAERYN universe:* **HIGH**. Solana DEX
+  tokens have an empirically high abandonment/rug rate; the
+  training set is concentrated on the lottery winners. Any
+  backtest result that includes JUP/BONK/WIF/PYTH/RAY
+  systematically overstates the expected return of a "trade Solana
+  DEX tokens" strategy because the losers are not in the dataset.
+
+**yfinance equity/forex (`data/yfinance_fetcher.py`).**
+- *Selection rule:* yfinance proxies Yahoo Finance, which returns
+  candles only for currently-quoted tickers. Delisted, merged, or
+  bankrupt tickers return empty data or fail lookup outright.
+- *What is silently missing:* over the 2022-2024 training-window
+  proxy, dozens of US equities were delisted (failed SPACs,
+  bankrupt retailers, restructured tech), and several major
+  mergers consumed prior tickers. yfinance forex pairs are more
+  stable but inherit the same "currently-quoted only" semantics.
+- *Severity for the active ZAERYN universe:* not applicable in
+  Phase 7. Stocks and forex remain in the repo
+  (`config/_models.py:58-61`) but are excluded from `active_assets`
+  (`config/_models.py:75-78`). Severity becomes material the
+  moment equity/forex re-enters the active universe in Phase 8.
+
+**Local SQLite store (`data/storage.py:13-26`).**
+- *Selection rule:* the `candles` table persists whatever
+  `upsert_candles` writes. The schema imposes no survivorship —
+  every row is by-asset, by-granularity, by-timestamp. But the
+  cache was *populated* by upstream survivor-biased fetchers, so
+  the local store is a frozen snapshot of the survivor set at
+  fetch time.
+- *Subtler downstream effect:* once a delisting happens upstream,
+  the local cache becomes the only record of an asset's history,
+  but that history is missing the assets that delisted *before*
+  the cache was populated. Re-running `scripts/fetch_history.py`
+  does not add delisted assets; it only refreshes the survivors.
+
+### Affected outputs
+
+Every ZAERYN output whose interpretation depends on universe
+selection, ordered by severity of the bias:
+
+1. **Backtest performance metrics (Sharpe, Sortino, Calmar, max
+   drawdown, win rate; `backtest/metrics.py`).** Survivorship
+   inflates all of them. The Sharpe ratios in the README results
+   table are the per-asset Sharpe of *strategies trading
+   survivors*, not the Sharpe of "the strategy applied to the
+   universe ZAERYN would have selected ex ante." Direction:
+   **upward bias**, magnitude unbounded.
+
+2. **Per-asset model performance (R², classification AUC;
+   `models/trainer.py:evaluate_model_health`).** Models are
+   trained only on assets that survived to the present. Patterns
+   specific to "soon-to-be-delisted" or "soon-to-rug" behavior —
+   terminal volume collapse, terminal volatility blowouts,
+   terminal correlation breaks — are systematically
+   underrepresented because such assets fell out of the dataset
+   before any candles were collected. Direction: **upward bias**
+   on apparent skill; the model is never forced to distinguish
+   "will survive" from "will not."
+
+3. **Active universe definition itself (`ACTIVE_ASSETS` in
+   `config/_models.py:75-78`).** The 10-asset list is a hardcoded
+   survivor cohort. Even if every downstream metric were perfect,
+   the choice of *which 10 assets* implicitly uses survivor
+   information. No formal "as-of date" was applied when the list
+   was assembled.
+
+4. **Cross-sectional and universe-relative outputs (Phase 10).**
+   None exist today; `FEATURE_COLUMNS` contains zero cross-asset
+   features (see Family 0 — Coverage gaps, and the T3 "Current
+   state" section). However, the bias becomes *much* more
+   material the moment Phase 10 introduces cross-sectional rank,
+   dispersion, or universe-relative beta features. Any "buy the
+   top-quintile-momentum asset" rule will overstate forward
+   returns because the universe from which the top quintile is
+   drawn was itself filtered for survival.
+
+5. **Risk-score components (`risk/scorer.py`).** The five-component
+   composite risk score is per-asset and does not currently
+   depend on universe composition, so survivorship affects it
+   only via the trained trend/volatility models it consumes
+   (point 2 above). No independent risk-score bias.
+
+### Honest disclosure paragraph
+
+The paragraph below is included verbatim in `README.md` under
+"Known limitations" so the same wording is reusable in any future
+results document without divergence.
+
+All ZAERYN performance numbers are computed on the surviving subset of each data source's universe: only assets still listed on Coinbase, still indexed by Birdeye, or still queryable on yfinance at the time we fetched are represented. Tokens that rug-pulled, equities that delisted, and pairs that exited their venue between the start of their history and the fetch date are absent from the dataset and therefore from every Sharpe, Sortino, win rate, and per-asset accuracy figure reported. This omission is systematic, not random — it inflates every backward-looking metric by an unknown amount proportional to each asset class's true historical failure rate, and the inflation grows once universe-relative features (cross-sectional rank, dispersion, beta) enter the pipeline in Phase 10. Survivorship correction via point-in-time listings data is a Phase 10 deliverable; until that lands, treat the present numbers as a ceiling, not an expectation.
+
+### Partial mitigations already in place
+
+- **Training-window discipline (730 days, not 900).** Documented
+  in `README.md:175`: extending the training window to 900 days
+  pulled in 2022 bear-market regime data that broke current-regime
+  predictions. This narrows the backward-reaching exposure of any
+  given training run but does **not** address survivorship —
+  every asset present in the 730-day window is still a
+  present-day survivor.
+- **WIF Phase 6 exclusion (`README.md:234`):** "the model
+  over-trades it (64 trades, Sharpe -1.33) due to extreme
+  volatility." Specific over-trading guard for one asset;
+  **not** a survivorship fix.
+- **Walk-forward backtest discipline (`backtest/engine.py`).**
+  The engine replays stored candles one bar at a time and only
+  exposes data up to bar t at decision time — a *look-ahead*
+  protection, not a survivorship protection. Look-ahead and
+  survivorship are independent biases; protecting against one
+  does not protect against the other.
+
+**Nothing in the current pipeline directly mitigates survivorship
+bias.** The above are the closest adjacent disciplines. T4
+records this gap explicitly so no future reader assumes a
+mitigation exists that does not.
+
+### Phase 10 deferral
+
+The actual fix is point-in-time listings data: a separate
+ingestion layer that records, per asset, the dates on which the
+asset was first listed on each venue and (where applicable) the
+date it was delisted/rugged/merged. Once such a layer exists, the
+backtest and training pipelines can reconstruct the universe *as
+it would have been observable at any given point in time*,
+including assets that later disappeared, and report both
+survivorship-corrected and uncorrected metrics with the delta
+documented.
+
+Cost / complexity rationale for deferring:
+
+- **Crypto (DEX).** No off-the-shelf point-in-time index exists
+  for the Solana memetoken universe. Building one requires
+  backfilling Birdeye / DexScreener data for tokens *no longer
+  indexed* — forensic on-chain pool discovery is a research
+  project in its own right, not a backtest engineering task.
+- **Equities.** CRSP is the academic standard and would be
+  tractable for the equity universe, but equity is not in
+  Phase 7 active scope and adding a paid data dependency now is
+  premature.
+- **Forex.** Forex pairs are stable enough that survivorship is
+  dominated by major currency reforms (e.g., pre-Euro pairs);
+  not a current-period concern.
+
+**Phase 10 acceptance criterion (forward-looking).** When the
+point-in-time layer ships, backtest results must be reportable in
+two parallel columns — survivorship-corrected and uncorrected —
+with the delta documented per asset class. Any single-column
+report without this distinction is, by Phase 10 standards,
+incomplete.
+
+### Cross-cutting notes
+
+- **T5 (backtest fill-time) interaction.** T5 audits how fills
+  are modeled inside a single asset's candle stream — orthogonal
+  to universe selection. Survivorship bias and fill-time bias
+  are independent; the T5 audit need not consider survivorship.
+- **T6 (triage) — no remediation tickets opened by T4.** Per
+  ticket scope, T4 produces no code change and no Phase 7
+  follow-up tickets. The Phase 10 deferral above is the entire
+  remediation posture.
+- **T3 cross-reference.** The T3 cross-asset alignment contract
+  (item 3, "Survivorship-aware missing-asset handling") names
+  survivorship as a constraint on any future Phase 10
+  cross-asset join. That contract item lives in T3 because it
+  is alignment-specific; the broader audit (mechanisms,
+  affected outputs, deferral posture) lives here.
+- **Per-asset granularity matters for honest disclosure.**
+  Solana DEX assets (Birdeye) carry materially higher
+  survivorship bias than Coinbase majors. An aggregate "ZAERYN
+  backtest Sharpe of 6.5" hides the fact that the Birdeye
+  subset bears almost all of the bias.
 
 ## Backtest engine fill-time (T5)
 (empty)
