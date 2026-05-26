@@ -10,7 +10,7 @@ fill-time (T5) findings live in their own sections.
 |---|---|---|
 | T1 (this doc + scaffold) | main agent | DONE |
 | T2 (per-family audit, 6 subagents) | parallel subagents | DONE |
-| T3 (cross-asset alignment) | TBD | PENDING |
+| T3 (cross-asset alignment) | main agent | DONE |
 | T4 (survivorship bias) | TBD | PENDING |
 | T5 (backtest fill-time) | TBD | PENDING |
 | T6 (triage + remediation tickets) | main agent | PENDING |
@@ -1085,7 +1085,178 @@ Entries ordered by family, then by feature name within family.
 These do not block Phase 7 closure but should land before any equity asset re-enters the active training universe.
 
 ## Cross-asset alignment (T3)
-(empty)
+
+### T3 scope statement
+
+T3 audits the **plumbing only**: how multi-asset data is loaded,
+joined, and iterated in the current codebase. Cross-asset feature
+scaffolding (e.g., `models/cross_asset.py`) is **deferred to
+Phase 10** (portfolio risk + correlation layer) under YAGNI — zero
+current `FEATURE_COLUMNS` features are cross-asset, and empty
+modules invite premature design and maintenance overhead. T3's job
+is to confirm the plumbing is correct so Phase 10 builds on a
+sound foundation, and to lock the alignment contract in a
+regression test that survives the deferral.
+
+### Current state
+
+Grep across the codebase (`pd.merge`, `pd.concat`, `.join(`,
+`reindex`, `ffill`/`bfill` cross-asset) and inspection of every
+multi-asset code path:
+
+| Location | Pattern observed | Verdict | Evidence |
+|---|---|---|---|
+| (codebase-wide) `pd.merge` calls across assets | **None exist** | N/A (no cross-asset joins anywhere) | `grep -rn "pd\.merge"` in `data/`, `models/`, `risk/`, `backtest/`, `scripts/`, `dashboard/` returns zero results outside the venv. |
+| `data/gecko_fetcher.py:159` | `pd.concat(all_chunks, ignore_index=True)` | SAFE (single-asset pagination) | "concatenates response chunks for one Solana token's history; not multi-asset." |
+| `dashboard/pages/overview.py:127` | `pd.concat([btc, pd.DataFrame([{Buy & Hold BTC row}])])` | SAFE (single-asset cosmetic append) | "appends a synthetic 'Buy & Hold BTC' Sharpe row to an existing BTC-only summary DataFrame; no cross-asset join." |
+| `data/storage.py:103-144` `load_candles` | Single-asset SQL: `WHERE asset = ? AND granularity = ?` | SAFE (per-asset isolation by construction) | "single-asset SQL query; returns one asset's DataFrame; cannot accidentally interleave assets." |
+| `scripts/risk_report.py:103` `candles_map = {asset: load_candles(...) for asset in ALL_ASSETS}` | Dict-of-DataFrames per asset | SAFE (dict, not joined) | "each asset's candles live in their own dict entry; never merged or reindexed; consumed independently per asset." |
+| `scripts/train_models.py:121` training loop | Per-asset iteration over `ALL_ASSETS`; each iteration loads its own data | SAFE — see trainer isolation subsection | "every iteration calls `load_candles(asset, ...)` fresh; no cross-asset DataFrame ever assembled." |
+| `risk/scorer.py:352` scoring loop | Per-asset iteration; each call to `compute_risk_score(asset, candles)` is independent | SAFE (with one universe-wide cache caveat, see notes) | "per-asset, per-iteration; only shared state is the universe-wide `_fg_cache` for Fear & Greed (intentional and asset-agnostic)." |
+| `data/historical.py:186` fetcher loop | Per-symbol fetch with own router | SAFE | "each symbol fetched into its own DataFrame and upserted to storage independently." |
+| `data/cleaner.py:84` `df.loc[fillable, col] = df[col].ffill()` | Forward-fill of price NaN runs ≤3 bars, single-asset | SAFE (intra-asset, bounded) | "`MAX_CONSECUTIVE_FILL=3` bounds the ffill window; runs entirely within one asset's OHLCV; not cross-asset." |
+
+**Headline finding: there is no multi-asset join, merge, reindex,
+or forward-fill across assets anywhere in the codebase.** Every
+multi-asset loop iterates independent per-asset DataFrames loaded
+fresh from storage. The cross-asset alignment surface area is
+effectively zero.
+
+### Trainer per-asset isolation
+
+Verified by inspection of `scripts/train_models.py` (entry point),
+`models/trainer.py:96-209` (loop body), `models/trend.py:52-140`,
+and `models/volatility.py:43-130`:
+
+- **Estimator instances are constructed per asset.** New
+  `RandomForestClassifier(**params)` at `models/trend.py:101`; new
+  `XGBRegressor(**params)` at `models/volatility.py:87`; new
+  `StandardScaler()` at `models/volatility.py:76-77`. No shared
+  fit-state between iterations.
+- **Random state is config-constant, not mutated.** `random_state=42`
+  in both `RF_PARAMS` (`config/_models.py:128`) and `XGB_PARAMS`
+  (`config/_models.py:140`) — read each iteration, identical and
+  immutable across the loop. No advancing global RNG.
+- **MLflow runs are context-managed.** `with mlflow.start_run(...)`
+  blocks at `models/trainer.py:135, 171` close cleanly between
+  iterations; no run-state leakage.
+- **No imports inside the loop.** All module imports are at the top
+  of `models/trainer.py`. The lazy imports inside
+  `TrendClassifier.predict_proba` (`models/trend.py:160-161`) and
+  similar are not on the training path.
+- **`MODEL_SAVE_DIR` directory creation is idempotent.**
+  `os.makedirs(..., exist_ok=True)` at `models/trainer.py:114`.
+- **`build_feature_matrix` builds its own per-asset SQLite cursor
+  scope.** Each call at `models/features.py:225` is fully scoped to
+  one asset; no cross-asset DataFrame is ever assembled inside it.
+- **Per-iteration result dict is fresh.** `asset_result = {}` at
+  `models/trainer.py:123`; no accumulation across assets.
+
+Verdict: **SAFE — trainer is genuinely per-asset isolated.** A
+failure in asset A cannot leak into asset B's training run.
+
+### Cross-asset alignment contract (forward-looking)
+
+Phase 10 cross-asset features MUST satisfy:
+
+1. **Inner-join on UTC-aware timestamps.** No outer-join with
+   forward-fill across assets. Outer-join + ffill synthesizes
+   prices for timestamps where one asset was not observable, which
+   becomes a future-data leak the moment correlations, ratios, or
+   beta features are computed.
+2. **Identical granularity across joined assets**, and the join
+   MUST assert this rather than silently allow drift. A 1h asset
+   joined against a 1d asset must fail loudly, not auto-reconcile.
+3. **Survivorship-aware missing-asset handling.** If an asset
+   delisted or stopped trading mid-window, the cross-asset feature
+   must handle missingness explicitly (drop the affected
+   timestamps, mark as NaN, or document the chosen semantics). No
+   silent infill. (Cross-references T4 — see survivorship section
+   for the broader treatment; T3 locks the alignment-specific
+   behavior only.)
+4. **Cross-asset feature computation MUST occur after the
+   inner-join**, not before. Computing per-asset features and then
+   joining the results risks introducing per-asset look-ahead from
+   misaligned warmup windows — feature[t] in asset A might depend
+   on data at timestamps that asset B has not observed yet.
+5. **Source data MUST be canonicalized to UTC-aware timestamps
+   AND a consistent bar-end convention at ingestion** (in the
+   storage / loader layer, not patched at join time). Crypto and
+   equity vendors do not always agree on convention; joining
+   sources with different bar-end conventions silently shifts
+   alignment by one bar. Today every source funnels through
+   `data/storage.py:upsert_candles` which stores Unix epoch
+   integers — convention is uniform by construction, but a new
+   ingestion path would need to honor the same contract.
+
+### Regression test
+
+`tests/test_cross_asset_alignment.py` — 3 test cases against
+pandas primitives (no cross-asset loader exists yet to exercise).
+Tests lock the two contract items most likely to be silently
+violated by future code:
+
+| Test | Contract item | What it locks |
+|---|---|---|
+| `test_inner_join_keeps_only_overlapping_timestamps` | item 1 | Inner-join on `timestamp` yields exactly the overlap range; no NaN slips in. |
+| `test_outer_join_with_ffill_would_be_unsafe` | item 1 (negative) | Demonstrates the leak pattern the contract forbids — outer-join + ffill fabricates prices outside an asset's observable range. Asserts the forbidden output explicitly so future code can be compared against it. |
+| `test_bar_open_vs_bar_close_timestamps_do_not_naively_align` | item 5 | Bar-open vs bar-close timestamps for the same logical bars do not match; naive inner-join produces zero rows. Canonical resolution is ingestion-time, not join-time. |
+
+When the Phase 10 cross-asset loader is built, replace the pandas
+`pd.merge(...)` call inside each test with the canonical function
+(e.g., `data.cross_asset.align_assets`); the assertions stand
+unchanged.
+
+### Phase 10 scaffolding deferral
+
+- **Current FEATURE_COLUMNS contains zero cross-asset features.**
+  Confirmed at `config/_models.py:165-197`; every column is
+  computed from a single asset's own OHLCV.
+- **Cross-asset feature module scaffolding** (e.g.,
+  `models/cross_asset.py`, `data/cross_asset_loader.py`) **is
+  deferred to Phase 10** when actually needed for portfolio
+  correlation and dispersion features.
+- **Rationale: YAGNI.** Empty modules invite premature design and
+  add maintenance overhead with no current consumer. The
+  regression test above guards the contract independent of
+  whether the module exists.
+- **Phase 8 caveat:** stock integration MAY surface cross-asset
+  requirements earlier (e.g., crypto-equity beta, sector
+  correlation). If so, the deferral is revisited at Phase 8
+  planning. The contract above holds either way.
+
+### Notes
+
+- **One universe-wide cached value exists: `_fg_cache` in
+  `risk/scorer.py:29`.** Module-global cache for the Fear & Greed
+  index, reset at the top of `score_all_assets()` (lines 337-341).
+  This is *intentional* and *not* a cross-asset leakage concern:
+  F&G is a single universe-wide reading applied identically to
+  every asset. The separately-flagged concern (`docs/repo_audit.md`
+  §14.1, third bullet) — that a failed first call poisons the
+  cache for the process lifetime — is a Phase 7 robustness issue,
+  not a T3 alignment finding.
+- **Bar-end convention is uniform today** by virtue of
+  `data/storage.py:upsert_candles` storing Unix epoch integers
+  and `from_unix` (`utils/time_utils.py:16-17`) returning
+  UTC-aware datetimes. Any future ingestion path that bypasses
+  `upsert_candles` (e.g., direct DataFrame imports for backtest
+  experiments) breaks contract item 5; T6 should track this as a
+  forward-flag if such a path is ever introduced.
+- **T4 (survivorship) cross-reference.** Contract item 3 names
+  survivorship-aware missing-asset handling as part of the
+  alignment contract, but the broader survivorship audit
+  (universe membership tables, point-in-time asset listings,
+  delisting handling) lives in T4. T3 only locks the alignment
+  primitive.
+- **T5 (backtest fill-time) cross-reference.** The backtest
+  engine (`backtest/engine.py`) operates on single-asset candle
+  streams; cross-asset fills are not in scope for T5 either.
+  The portfolio-level backtest that *would* exercise cross-asset
+  alignment does not exist today.
+- **T6 candidates from T3:** none mandatory. Contract violations
+  surface only when the Phase 10 module is built. The regression
+  test makes such violations fail loudly at PR time.
 
 ## Survivorship bias (T4)
 (empty)
