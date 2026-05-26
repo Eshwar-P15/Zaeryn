@@ -12,7 +12,7 @@ fill-time (T5) findings live in their own sections.
 | T2 (per-family audit, 6 subagents) | parallel subagents | DONE |
 | T3 (cross-asset alignment) | main agent | DONE |
 | T4 (survivorship bias) | main agent | DONE |
-| T5 (backtest fill-time) | TBD | PENDING |
+| T5 (backtest fill-time) | main agent | DONE |
 | T6 (triage + remediation tickets) | main agent | PENDING |
 
 ## Scope
@@ -1486,7 +1486,159 @@ incomplete.
   subset bears almost all of the bias.
 
 ## Backtest engine fill-time (T5)
-(empty)
+
+### T5 scope statement
+
+T5 audits the temporal contract between signal generation and fill
+execution inside `BacktestEngine.run`. The single question driving
+the audit: do the Phase 5 Sharpe ratios reported in `README.md`
+reflect what a real trader could have achieved, or are they
+inflated by impossible fills? The audit traces the actual code
+path that produced those numbers — not the engine in the abstract.
+Severity verdicts use the rubric in the T5 ticket: IMPOSSIBLE FILL
+= S5; DELAYED BUT VALID undocumented = S2; INDETERMINATE = S3
+pending regression test; REALISTIC = CLEAN.
+
+### Canonical entry point
+
+The Phase 5 Sharpe numbers in `README.md:13-21` were produced by:
+
+`scripts/run_backtest.py:88` → `engine.run(asset, days_back=BACKTEST_DAYS, conn=conn)` → `BacktestEngine.run` at `backtest/engine.py:112-239` → `compute_metrics(result)` at `backtest/metrics.py:95-196` (Sharpe formula at `metrics.py:30-42`).
+
+There is one engine. `grep -rn "BacktestEngine" backtest/ scripts/ models/` returns exactly two call sites: the `class` definition at `backtest/engine.py:95` and the `engine = BacktestEngine(strategy=strat)` construction at `scripts/run_backtest.py:87`. No vectorized variant, no alternative runner, no notebook path. The audit below is the audit of *that* path.
+
+### Engine architecture
+
+**Iterative bar-by-bar.** `backtest/engine.py:155` `for i in range(INDICATOR_WARMUP, len(df)):`. `INDICATOR_WARMUP = 60` (`config/_models.py:286`). Each iteration handles bar i and only bar i; no vector look-up over future indices, no batch fill resolution. Index alignment between signal and fill is therefore not a vectorized concern — but the *same-bar* alignment (S → F on bar i) is the load-bearing concern below.
+
+### Signal-to-fill flow
+
+Traced bar-by-bar from `backtest/engine.py:155-207`:
+
+> **Bar i (end of bar i, after the bar has closed).** The loop sets `row = df.iloc[i]` (line 156) and reads `candle_high`, `candle_low`, `candle_close` from this row (lines 157-159). Stop-loss / take-profit checks for any *already-open* position fire first using bar i's high/low (lines 162-179). The strategy then generates a signal from `window = df.iloc[: i + 1]` (line 182) — a window that **includes bar i**, so the signal can read bar i's close, bar i's RSI, bar i's MACD, etc. If the signal is `BUY`, the engine immediately opens a position at `candle_close` (line 186), i.e. *bar i's close*. If `SELL`, it closes at `candle_close` (line 189). Finally, equity-curve mark-to-market uses `candle_close` for unrealized PnL (lines 195-201).
+
+**The decision and the fill share bar i's close.** The signal needs bar i's close to be computed (every strategy in `backtest/strategies.py` reads `window.iloc[-1]` features that depend on bar i's close). Bar i's close is observable only *after* bar i has closed. So the engine is recording a trade at a price that, at the moment the decision was made, no longer existed as a tradeable quote. This is the textbook **IMPOSSIBLE FILL**.
+
+### Per-strategy verdict table
+
+All four strategies follow the same control flow: they read bar i's features (the most recent row of `window`) to decide, and the engine then fills at bar i's close.
+
+| Strategy | Signal bar | Fill bar | Fill price | Verdict | Severity | Evidence (file:line + reasoning) |
+|---|---|---|---|---|---|---|
+| MACD Cross | i | i | i's close | **IMPOSSIBLE FILL** | **S5** | `strategies.py:35-55` reads `window.iloc[-1]` MACD/MACD-signal (functions of bar i's close) → engine `engine.py:186/189` fills at `candle_close = df.iloc[i]["close"]`. |
+| RSI Mean Reversion | i | i | i's close | **IMPOSSIBLE FILL** | **S5** | `strategies.py:69` `window["rsi_14"].iloc[-1]` — RSI at bar i depends on close[i]. Same engine fill path. |
+| Bollinger Band | i | i | i's close | **IMPOSSIBLE FILL** | **S5** | `strategies.py:94` `window["bb_position"].iloc[-1]` — Bollinger %B at bar i depends on the 20-bar window ending at bar i. Same engine fill path. |
+| ZAERYN ML Composite | i | i | i's close | **IMPOSSIBLE FILL** | **S5** | `strategies.py:179` `self._trend_model.predict_proba(window)` consumes the full feature vector at bar i (every feature in `FEATURE_COLUMNS` is a function of data up to and including bar i's close). Same engine fill path. |
+
+All four are S5. The S5 verdict is the same finding repeated four times because the engine, not the strategy, owns the fill semantics — every strategy that routes through `BacktestEngine.run` inherits the impossible fill.
+
+### First-fill audit
+
+- The first iteration of the engine loop runs at `i = INDICATOR_WARMUP = 60` (`engine.py:155`).
+- The first bar at which any strategy *can* fire a BUY is i = 60 (warmup-driven; before bar 60, indicator features are NaN and strategies HOLD).
+- The first fill is recorded with `entry_time = df.iloc[60]["timestamp"]` and `entry_price = df.iloc[60]["close"]` — the same IMPOSSIBLE FILL pattern as steady-state.
+- **No first-fill quirk:** the steady-state contract applies uniformly. Locked in regression test A.
+
+### Last-fill audit
+
+- If the loop exits with `position is not None`, the engine closes the open position at `engine.py:210-216`: `last_close = float(df.iloc[-1]["close"])`, exit_reason `"END_OF_DATA"`, then `equity_curve[-1] = cash`.
+- The forced close uses the **last bar's close** as the exit price — same IMPOSSIBLE FILL pattern (a trader cannot execute at the exact final printed close).
+- The `equity_curve[-1] = cash` rewrite at line 216 means the last entry of the equity curve is the post-close cash position, *not* the mark-to-market at last-bar's close. This is internally consistent (the position is gone, so cash IS the portfolio value) but means the equity curve's terminal point is not directly comparable to its other points. **Not** a leak. **S1 hygiene note**: this rewrite changes the semantic meaning of the final equity-curve element from "mark-to-market value" to "realized cash" — anything downstream (e.g., a vectorized return computation) that assumes uniform semantics across the curve will see a small discontinuity at index −1. `backtest/metrics.py:34` `pd.Series(equity_curve).pct_change()` already absorbs this without bias because the final return is a real exit price → realized cash transition that *would* be observed in a real account.
+
+### Cost and slippage application
+
+| Cost | Verdict | Evidence (file:line + reasoning) |
+|---|---|---|
+| Commission, entry | **SAFE in isolation** | `engine.py:250` `entry_cost = position_usd * self.commission_pct` — deducted from cash at the *same* moment the position is opened. Magnitude is correct *given* the (impossible) fill price; the commission timing itself does not introduce a separate leak. |
+| Commission, exit | **SAFE in isolation** | `engine.py:282` `exit_commission = gross_exit_val * self.commission_pct` — applied to the gross exit value before crediting cash. Standard. |
+| Slippage | **NOT MODELED** | No slippage code path exists in `engine.py`. `grep -n "slip" backtest/` returns zero hits. Fills assume execution at the exact bar close (signal) or exact stop/TP price (stops). Phase 7 Step 3 ("Transaction cost model — realistic commission, slippage, and funding assumptions") is the documented remediation. T6 should defer slippage to Step 3 rather than open a duplicate ticket. |
+| Funding / borrow | **NOT MODELED** | Engine is long-only; no funding-rate path. See "Short-position support" below. |
+
+Note that the "SAFE in isolation" commission verdicts are stacked *on top of* the S5 IMPOSSIBLE FILL: fixing the fill in T6 changes the fill price, and the commissions then scale to the corrected price automatically because they multiply through `position_usd` / `gross_exit_val`. No commission-side change required if the fill timing is corrected; documenting this so the T6 fix does not over-reach.
+
+### Position sizing timing
+
+The backtest engine uses **fixed-fraction sizing**, not Kelly. `risk/position_sizer.py:kelly_fraction` exists but is reserved for risk reporting / live execution; it is not imported anywhere under `backtest/`.
+
+| Sizing method | Verdict | Evidence (file:line + reasoning) |
+|---|---|---|
+| Fixed fraction (`BACKTEST_POSITION_PCT = 0.10`) | **SAFE** | `engine.py:249` `position_usd = cash * self.position_pct`. Inputs: current `cash` (path-dependent only on past trades) and a config constant. No forward-bar input. |
+| Stop loss (`BACKTEST_STOP_LOSS_PCT = 0.05`) | **SAFE** | `engine.py:258` `entry_price * (1 - self.stop_loss_pct)`. Set once at entry time using entry price; constant thereafter. |
+| Take profit (`BACKTEST_TAKE_PROFIT_PCT = 0.10`) | **SAFE** | `engine.py:259` same shape as stop loss. |
+| Kelly (live / risk only) | **N/A in backtest** | `grep -rn "kelly\|Kelly" backtest/` returns zero hits. Not on the audit path. |
+
+### Equity curve consistency
+
+**Verdict: CONSISTENT under the current (broken) contract.**
+
+At each bar i, `equity_curve` appends `cash + position_usd + unrealized`, where `unrealized = (candle_close - entry_price) / entry_price * position_usd` (`engine.py:196-200`). Both `candle_close` and `entry_price` are bar-close values in the *same close frame* — so the mark-to-market is consistent with the entry pricing.
+
+The consistency is real, but it is consistency *with* the S5 contract, not consistency that would survive the T6 fix. If the engine is corrected to fill at bar i+1's open, the equity curve at bar i must NOT yet include the position (the trade has not yet executed), and the mark at bar i+1 must be against the bar i+1 open entry. Without that adjustment, the corrected engine would have a one-bar drift between entry-time and mark-time. **T6 must change `engine.py:195-205` in lock-step with the fill fix.** This is called out so the T6 remediation does not introduce a new bug.
+
+Regression test B locks the current mark-to-market frame so any future change is intentional.
+
+### Walk-forward boundary
+
+**Verdict: N/A — no walk-forward harness exists in `BacktestEngine`.**
+
+- `grep -in "walk.forward\|train.test_split" backtest/ scripts/run_backtest.py` returns zero results.
+- The engine loads a *pre-trained* strategy (`ZAERYNMLStrategy._load_model` at `strategies.py:129-150`) and replays it across the entire `BACKTEST_DAYS` window without retraining or rolling the model.
+- Cross-window position state: there is no window concept in the engine, so cross-window state cannot leak. Train/test split happens once, at model-training time in `models/trainer.py`, independent of the backtest run.
+- Phase 7 Step 4 ("Validation infrastructure — walk-forward harness, leakage checks, holdout discipline") is where this gap is intended to close. The current `BacktestEngine` is single-pass; the walk-forward harness will likely wrap it rather than replace it. T5 surfaces the absence so Phase 7 Step 4 has an explicit baseline.
+
+### Short-position support
+
+**NOT SUPPORTED. Long-only.**
+
+- `engine.py:185-187`: `BUY` opens a position only if `position is None`; `SELL` closes a position only if `position is not None`. There is no third branch that opens a short.
+- No `short`, `borrow`, or negative-position code path exists. `grep -n "short" backtest/engine.py` returns one match — line 187's `SELL` branch — and that's a long-position close, not a short open.
+- Forward flag: Phase 11 (multi-agent architecture) is the documented place where short support will need to land. When it does, the short fill path needs its own T5-style audit (borrow cost timing, hard-to-borrow availability, fees) because long-only fill semantics will not generalize.
+
+### Strategy-level bypass audit
+
+| Strategy | Routes through engine? | Evidence |
+|---|---|---|
+| MACDCrossStrategy | ROUTES THROUGH ENGINE | `strategies.py:31-55` implements only `generate_signal` → returns `Signal`. No order placement, no fill computation. |
+| RSIMeanReversionStrategy | ROUTES THROUGH ENGINE | `strategies.py:65-80` same shape. |
+| BollingerBandStrategy | ROUTES THROUGH ENGINE | `strategies.py:90-105` same shape. |
+| ZAERYNMLStrategy | ROUTES THROUGH ENGINE | `strategies.py:163-211` same shape — even the ML path returns a `Signal` and lets the engine handle the fill. The fallback path (`strategies.py:165`) delegates to `MACDCrossStrategy.generate_signal`, which also returns a `Signal`. No bypass. |
+
+**No strategy implements its own fill logic.** The engine is the single fill chokepoint. This is good news for the T6 fix: a single change at `engine.py:185-192` corrects all four strategies simultaneously.
+
+### Prior audit refutation
+
+`docs/repo_audit.md:22` states verbatim:
+
+> **`engine.py`** (321 lines) — `BacktestEngine.run()` replays stored candles; checks stop loss on `candle_low`, take profit on `candle_high`, computes equity curve every candle. Defines `TradeRecord` and `BacktestResult` dataclasses. **No look-ahead risk in the loop itself (window = `df.iloc[:i+1]`).**
+
+**T5 refutes the bolded clause.** The prior audit conflated two distinct properties:
+
+1. *Data look-ahead:* does the strategy read data with index > i when computing the signal at bar i? `window = df.iloc[: i + 1]` correctly bounds the data view — **no data leakage**, prior audit correct here.
+2. *Execution look-ahead:* having computed the signal using bar i's close (which is observable only at end-of-bar i), can the engine then execute at bar i's close? **No — that price no longer exists as a tradeable quote at the moment the decision was made.** Prior audit missed this layer entirely.
+
+The two properties are independent. The engine satisfies (1) but violates (2). The Phase 5 Sharpe numbers reported in `README.md:13-21` are inflated by an unknown magnitude as a direct result. Magnitude depends on how much the per-bar intra-bar drift (open-to-close) systematically aligns with the signal direction; it is not bounded by zero.
+
+### Cross-cutting notes
+
+- **T3 cross-reference.** T3 already verified per-asset isolation in the trainer and that no cross-asset join exists. T5's findings are within a single asset's candle stream — orthogonal to T3.
+- **T4 cross-reference.** T4 documented survivorship as a separate, additive bias on top of any fill-time bias. The two compound: an inflated Sharpe (T5) computed on a survivor-biased universe (T4) is doubly optimistic. Neither bias cancels the other.
+- **T6 candidates from T5 — mandatory.**
+  - **S5 / IMPOSSIBLE FILL:** retime BUY/SELL fills at `engine.py:186, 189` to `df.iloc[i + 1]["open"]` (with corresponding `entry_time = df.iloc[i + 1]["timestamp"]`). Must include the lock-step equity-curve fix at `engine.py:195-205` so mark-to-market remains in the correct frame after the fill change. Handle the last-bar case: if signal fires at i = len(df) - 1, there is no i + 1 — the engine should HOLD (decline the trade) rather than fill at a phantom bar. Locked by regression test C below (currently xfail).
+  - **S1 hygiene / END_OF_DATA equity-curve discontinuity:** consider documenting in a one-line comment at `engine.py:215-216` that `equity_curve[-1]` is post-close cash, not mark-to-market. No code change required.
+- **T6 candidates from T5 — deferred to Phase 7 Step 3.**
+  - Slippage modeling. Already on the Step 3 roadmap; T5 records the audit baseline so Step 3 has a documented "before" state.
+  - Funding / borrow rates. Will become relevant when short support lands in Phase 11.
+- **Headline impact.** Until the S5 fix lands and the regression test C unxfails, every Sharpe ratio in `README.md`, in `docs/data_integrity_audit.md`, and in any historical results document is the Sharpe of an unrealizable strategy. This is the single most material correctness finding in the entire Step 2 audit. T6 must triage it as the top priority.
+
+### Regression test
+
+**File:** `tests/test_backtest_fill_time.py` — 3 cases.
+
+| Test | Contract item locked | Status |
+|---|---|---|
+| `test_signal_fill_at_same_bar_close_current_contract` | Current (broken) contract: BUY at signal bar i fills at `df.iloc[i]["close"]`. Pinned so any future change is intentional and reviewed. | passes (locks status quo) |
+| `test_equity_curve_marks_to_market_at_each_bar_close` | Equity-curve mark-to-market at bar i uses `df.iloc[i]["close"]`, both before and after position open. Hand-derived expected portfolio value from a deterministic monotone-up flat-OHLC fixture. | passes (locks status quo) |
+| `test_buy_fills_at_next_bar_open_correct_contract` | **Correct contract:** BUY at signal bar S fills at `df.iloc[S + 1]["open"]`. The T6 remediation's executable acceptance criterion. | **xfail (strict)** — currently fails because the engine fills at bar S's close. Will flip to pass when T6 lands the fix; the `strict=True` marker will then turn the unexpected pass into a test failure, forcing the fix author to remove the xfail marker. |
 
 ## Triage and remediation (T6)
 (empty)
