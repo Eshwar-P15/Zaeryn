@@ -31,6 +31,48 @@ Phase 7: Foundation Hardening. Crypto only for backtesting and training. Stocks 
 4. Every phase ends with a tagged version and a one-page results document.
 5. The out-of-sample holdout is touched exactly once.
 
+## Claude Code execution protocol
+
+Tactical rules every ticket must follow. Strategic constraints live in
+"Discipline commitments" above; these are the per-ticket execution rules.
+
+1. **Read before write.** Verify current state of every file before
+   modifying. Never assume what's there from memory or prior prompts.
+2. **Scope discipline.** Touch only files explicitly listed in the
+   ticket. No drift, no opportunistic cleanup. Surface unrelated
+   findings as separate items.
+3. **Stage and stop.** Never commit autonomously. Stage changes, run
+   verification, report results, wait. Commits are the user's call.
+4. **Pre-commit gate is law.** All hooks must pass before reporting
+   the ticket done. Fix failures or escalate — never bypass.
+5. **Reference the hole.** Every change cites the audit finding,
+   ticket, or roadmap step it closes. Commit messages and CHANGELOG
+   entries both.
+6. **No business logic changes in test-only tickets.** If a test
+   reveals a real bug, stop and surface it. Do not silently patch
+   production code.
+7. **Hand-calculated ground truth for math tests.** Expected values
+   are derived from the formula by hand, never from "whatever the
+   function returns." Tests that mirror the implementation test nothing.
+8. **Explicit deliverables report.** After every ticket: file diff
+   summary, hook status, test count (passed/failed/collected), and
+   any surprises. No vague "looks good" summaries.
+9. **Stop on ambiguity.** Ask before guessing. A 30-second
+   clarification beats a 30-minute rollback.
+10. **Honest state reporting.** Warnings reported. Skipped tests
+    called out. Deprecations flagged. No paper-overs.
+
+### Commit message convention
+
+All ticket commits use the structured prefix `[P{phase}.S{step}.T{ticket}]`
+in the subject line, alongside the conventional commit type:
+test: [P7.S1.T7] add Sortino/Calmar coverage and leakage sweep
+docs: [P7.S1.T8] add CHANGELOG.md with v0.7.1 entry
+
+This makes per-ticket history greppable without polluting the tag
+namespace. Tags are reserved for step boundaries (v0.7.1, v0.7.2, ...)
+and phase boundaries (v0.8.0, v0.9.0, ...).
+
 ## Phase 7 plan (high-level)
 Five steps, targeting tag `v0.8.0`:
 1. Infrastructure — pyproject.toml, ruff, MLflow, centralized config (pydantic-settings).
