@@ -22,6 +22,8 @@ Built from scratch as a CS 210 final project at Rutgers University.
 
 90-day walk-forward backtest · $10,000 starting capital · 0.1% commission per leg
 
+Note (added v0.7.2): These results were computed with a backtest engine that fills trades at the same bar's close where the signal was computed. This is an impossible fill in any realistic market — you cannot trade at a price observable only at the moment that price was set. Reported Sharpe ratios are therefore inflated by an unknown magnitude. See docs/data_integrity_audit.md Section T5 (RM-01) for the full audit finding. Corrected numbers will replace this table when Phase 7 Step 4 (v0.7.4) lands; Step 3 (v0.7.3) fixes the engine, Step 4 produces the cost-aware corrected numbers.
+
 MACD Cross on BTC-USD over the same period: **Sharpe -2.09**
 
 ---

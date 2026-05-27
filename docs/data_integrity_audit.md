@@ -13,7 +13,7 @@ fill-time (T5) findings live in their own sections.
 | T3 (cross-asset alignment) | main agent | DONE |
 | T4 (survivorship bias) | main agent | DONE |
 | T5 (backtest fill-time) | main agent | DONE |
-| T6 (triage + remediation tickets) | main agent | PENDING |
+| T6 (triage + remediation tickets) | main agent | DONE |
 
 ## Scope
 - 29 features in FEATURE_COLUMNS (config/_models.py:165-197).
@@ -1551,7 +1551,7 @@ All four are S5. The S5 verdict is the same finding repeated four times because 
 |---|---|---|
 | Commission, entry | **SAFE in isolation** | `engine.py:250` `entry_cost = position_usd * self.commission_pct` — deducted from cash at the *same* moment the position is opened. Magnitude is correct *given* the (impossible) fill price; the commission timing itself does not introduce a separate leak. |
 | Commission, exit | **SAFE in isolation** | `engine.py:282` `exit_commission = gross_exit_val * self.commission_pct` — applied to the gross exit value before crediting cash. Standard. |
-| Slippage | **NOT MODELED** | No slippage code path exists in `engine.py`. `grep -n "slip" backtest/` returns zero hits. Fills assume execution at the exact bar close (signal) or exact stop/TP price (stops). Phase 7 Step 3 ("Transaction cost model — realistic commission, slippage, and funding assumptions") is the documented remediation. T6 should defer slippage to Step 3 rather than open a duplicate ticket. |
+| Slippage | **NOT MODELED** | No slippage code path exists in `engine.py`. `grep -n "slip" backtest/` returns zero hits. Fills assume execution at the exact bar close (signal) or exact stop/TP price (stops). Phase 7 Step 4 ("Transaction cost model — realistic commission, slippage, and funding assumptions") is the documented remediation. T6 defers slippage to Step 4 rather than open a duplicate ticket. (Note: this section was written before the post-T5 Phase 7 restructure inserted the new Step 3 — engine fill-time remediation. Slippage moves to Step 4 under the new numbering; the substance of the disposition is unchanged.) |
 | Funding / borrow | **NOT MODELED** | Engine is long-only; no funding-rate path. See "Short-position support" below. |
 
 Note that the "SAFE in isolation" commission verdicts are stacked *on top of* the S5 IMPOSSIBLE FILL: fixing the fill in T6 changes the fill price, and the commissions then scale to the corrected price automatically because they multiply through `position_usd` / `gross_exit_val`. No commission-side change required if the fill timing is corrected; documenting this so the T6 fix does not over-reach.
@@ -1641,4 +1641,319 @@ The two properties are independent. The engine satisfies (1) but violates (2). T
 | `test_buy_fills_at_next_bar_open_correct_contract` | **Correct contract:** BUY at signal bar S fills at `df.iloc[S + 1]["open"]`. The T6 remediation's executable acceptance criterion. | **xfail (strict)** — currently fails because the engine fills at bar S's close. Will flip to pass when T6 lands the fix; the `strict=True` marker will then turn the unexpected pass into a test failure, forcing the fix author to remove the xfail marker. |
 
 ## Triage and remediation (T6)
-(empty)
+
+### T6 scope statement
+
+T6 is planning, not execution. Every Step 2 finding gets a
+disposition — a remediation ticket targeted at a specific Phase 7
+step, a forward-flag for a later phase, or accepted-as-is with
+documented rationale. The actual fixes happen in Steps 3-6; T6's
+output is the backlog Steps 3-6 will execute against. Severity S3
+and above open remediation tickets per the rubric; S2 and S1
+findings are accepted as-is unless promoted into a bundled
+hygiene sweep before retraining.
+
+### Backlog index
+
+| ID | Title | Severity | Target |
+|---|---|---|---|
+| RM-01 | IMPOSSIBLE FILL + equity_curve consistency | S5 | Step 3 |
+| RM-02 | log_returns -inf bypass | S3 | Step 3 |
+| RM-03 | adx_14 zero-warmup + hardcoded window | S2 | pre-Step 6 |
+| RM-04 | bb_upper/lower dead intermediates removal | S2 | pre-Step 6 |
+| RM-05 | vol_regime intent docstring | S2 | pre-Step 6 |
+| RM-06 | volume_trend windows → FEATURE_WINDOWS | S2 | pre-Step 6 |
+| RM-07 | volume_ma20 cross-module assertion | S2 | pre-Step 6 |
+
+### Remediation tickets (RM-NN)
+
+#### RM-01 | IMPOSSIBLE FILL + equity_curve consistency
+
+- **Source:** Audit section "Backtest engine fill-time (T5)" —
+  `backtest/engine.py:185-192` (BUY/SELL fills at `candle_close`)
+  and `backtest/engine.py:195-205` (equity-curve mark-to-market
+  in the same close frame).
+- **Severity:** S5.
+- **Description:** `BacktestEngine.run` fills BUY and SELL
+  signals at the same bar's close that the signal was computed
+  on. Bar i's close is observable only after bar i has closed,
+  so the fill price is no longer a tradeable quote at the moment
+  the decision was made. All four strategies that route through
+  the engine (MACD Cross, RSI Mean Reversion, Bollinger Band,
+  ZAERYN ML Composite) inherit this contract. Every Sharpe ratio
+  in the README Phase 5 results table is inflated by an unknown
+  magnitude.
+- **Fix:** Retime BUY/SELL fills at `engine.py:186, 189` to
+  `df.iloc[i + 1]["open"]` (with `entry_time =
+  df.iloc[i + 1]["timestamp"]`). Apply the lock-step
+  equity-curve adjustment at `engine.py:195-205` so the bar i
+  mark-to-market does NOT yet include the position (the trade
+  has not yet executed) and the bar i+1 mark is against the
+  bar i+1 open entry. Last-bar case: if a signal fires at
+  `i = len(df) - 1`, the engine must HOLD rather than fill at
+  a phantom bar.
+- **Acceptance criteria:**
+  (a) The xfail-strict test in
+      `tests/test_backtest_fill_time.py`
+      (`test_buy_fills_at_next_bar_open_correct_contract`) flips
+      from xfail to xpass after the fix. The xfail assertion the
+      fix must satisfy, verbatim from the test: "Correct
+      contract: BUY fills at bar S+1's open."  The `strict=True`
+      marker will turn the unexpected pass into a test failure,
+      forcing the fix author to remove the xfail marker
+      deliberately.
+  (b) The 45 pre-existing backtest tests in
+      `tests/test_backtest.py` have expected values recomputed
+      against the new fill-at-S+1-open contract. Specifically:
+      the tests asserting on `portfolio_value`, `equity_curve`,
+      `total_return`, or `fill_price` (notably
+      `test_engine_equity_curve_length`,
+      `test_engine_final_capital_matches_equity_curve`,
+      `test_engine_commission_reduces_capital`,
+      `test_engine_stop_loss_uses_low_not_close`, and the live
+      strategy harnesses around lines 455-477) are the
+      assertions that need recomputation. Hand-derive new
+      expected values from the same synthetic fixtures the
+      tests use (per protocol rule 7); do NOT capture them
+      empirically from a "known-clean run" — capturing
+      empirically would lock whatever the engine produces, not
+      what it SHOULD produce. Specifically including
+      test_engine_stop_loss_uses_low_not_close
+      (tests/test_backtest.py:314), which depends on intra-bar
+      stop-loss firing semantics and will require careful
+      recomputation under the new fill contract.
+  (c) The README.md Phase 5 Sharpe table is replaced with
+      corrected numbers as a sub-task of RM-01 — but the actual
+      corrected numbers are produced by Step 4's cost-aware
+      rerun, not by Step 3's engine fix alone. RM-01's
+      acceptance is satisfied when (a) and (b) are done; the
+      README update is a Step 4 sub-task. This dependency is
+      documented explicitly so Step 3 does not block on
+      generating numbers Step 4 owns.
+- **Target:** Phase 7 Step 3 (v0.7.3).
+- **Dependencies:** none. RM-02 ships in the same step but does
+  not gate RM-01.
+
+#### RM-02 | log_returns -inf bypass
+
+- **Source:** Audit section "Family (e) — Price-derived /
+  cleaner-resident" — `data/cleaner.py:112`
+  (`np.log(df['close'] / df['close'].shift(1))`).
+- **Severity:** S3.
+- **Description:** `np.log(0)` returns `-inf` when a close price
+  is zero at any non-row-0 position. pandas treats `inf` as
+  non-NaN by default, so `-inf` survives both
+  `dropna(subset=required)` at `features.py:278` and the NaN
+  guard `X.isna().sum().sum()` at `features.py:297`. A zero
+  close would inject `-inf` into the training matrix without
+  triggering any existing guard. `validate_ohlcv` checks for
+  non-positive prices but is decoupled from the
+  `build_feature_matrix` pipeline.
+- **Fix:** (preferred) Guard at the computation site in
+  `normalize_price_data`:
+  `np.where(df["close"].shift(1) > 0, np.log(df["close"] /
+  df["close"].shift(1)), np.nan)`. `-inf` never materializes;
+  the fallback NaN is caught by the existing `dropna`.
+  Alternative — invoke `validate_ohlcv` inside
+  `build_feature_matrix` and abort on `is_valid=False` — is a
+  larger pipeline contract change and deferred.
+- **Acceptance criteria:** After the fix, a unit test injecting
+  a zero close into a synthetic OHLCV frame must show no
+  `-inf` in the resulting `log_returns` column and no `-inf` in
+  the feature matrix X downstream. Existing data-cleaning tests
+  must still pass.
+- **Target:** Phase 7 Step 3 (v0.7.3). Bundled with RM-01.
+- **Rationale for bundling:** The Step 4 cost-drag delta is the
+  marquee deliverable of Step 4 and must be measured against
+  fully cleaned data. Shipping RM-02 in Step 3 keeps Step 4's
+  attribution clean (cost-drag, not cost-drag-plus-data-fix).
+- **Dependencies:** none.
+
+#### RM-03 | adx_14 zero-warmup + hardcoded window
+
+- **Source:** Audit section "Family (b) — Momentum oscillators
+  + trend-strength" — `models/features.py:152-157` and the
+  upstream `ta` library at `ta/trend.py:729`
+  (`np.zeros(self._window - 1)`).
+- **Severity:** S2.
+- **Description:** The `ta` library's ADX implementation
+  pre-fills the first `window-1` warmup positions with **zeros,
+  not NaN**, so the first 13 rows per asset enter training as
+  `adx_14 = 0.0` (an artifact, not a measurement) and are not
+  caught by `dropna`. Companion hygiene gap: `window=14` is
+  hardcoded at `features.py:156` rather than read from
+  `FEATURE_WINDOWS`.
+- **Fix:** (a) Replace the first `window-1` rows of `adx_14`
+  with `np.nan` after computation (e.g.,
+  `df.loc[df.index[:13], "adx_14"] = np.nan` or equivalent
+  `.where` mask) so the `dropna` backstop catches them. (b) Add
+  `FEATURE_WINDOWS["adx"] = 14` to `config/_models.py` and
+  dereference at `features.py:156`.
+- **Acceptance criteria:** After the fix, the first 13 rows of
+  `adx_14` are NaN (not 0.0) in the intermediate frame, and the
+  number of rows dropped by `dropna(subset=required)` grows by
+  exactly the warmup count. The hardcoded `14` literal is
+  removed from `features.py:156`.
+- **Target:** Phase 7 Step 6 (pre-retrain data hygiene bundle,
+  v0.8.0).
+- **Dependencies:** none.
+
+#### RM-04 | bb_upper/bb_lower dead intermediates removal
+
+- **Source:** Audit section "Family (c) — Volatility"
+  family-level notes — `models/features.py:91-92`. Grep
+  confirms zero downstream consumers.
+- **Severity:** S2 (hygiene).
+- **Description:** `df["bb_upper"]` and `df["bb_lower"]` are
+  materialized at `features.py:91-92` but absent from
+  `FEATURE_COLUMNS` and not referenced anywhere else in
+  `data/`, `models/`, `risk/`, `backtest/`, `dashboard/`, or
+  `tests/`. Leftover prototyping residue; discarded at
+  `features.py:293` by `X = df[FEATURE_COLUMNS].copy()`.
+- **Fix:** Delete the two assignments at
+  `features.py:91-92`. Safe — no consumer, not a
+  FEATURE_COLUMNS member, no joblib serialization impact.
+- **Acceptance criteria:** Lines 91-92 are removed.
+  Cross-codebase grep for `bb_upper` and `bb_lower` returns
+  zero hits outside `.venv`. Existing tests still pass; no
+  new tests required because the columns were never asserted
+  on.
+- **Target:** Phase 7 Step 6 (pre-retrain data hygiene
+  bundle, v0.8.0).
+- **Dependencies:** none.
+
+#### RM-05 | vol_regime intent docstring
+
+- **Source:** Audit section "Family (c) — Volatility" —
+  `models/features.py:144-149`.
+- **Severity:** S2.
+- **Description:** Name `vol_regime` implies a categorical
+  regime label (elevated/low) but implementation returns a
+  continuous ratio (`realized_vol_20 / 60-bar mean`). The
+  checklist worked example at item 8 names this as an intent
+  MISMATCH. Renaming the column would break the
+  FEATURE_COLUMNS order invariant and require retraining
+  every joblib model.
+- **Fix:** Update the docstring/comment at `features.py:144`
+  to explicitly state the output is a continuous ratio, not a
+  categorical label. No code change. Do NOT rename the column.
+- **Acceptance criteria:** Comment at `features.py:144`
+  documents the continuous-ratio output and the rationale for
+  not renaming. FEATURE_COLUMNS order unchanged. No retrain
+  required.
+- **Target:** Phase 7 Step 6 (pre-retrain data hygiene
+  bundle, v0.8.0).
+- **Dependencies:** none.
+
+#### RM-06 | volume_trend windows → FEATURE_WINDOWS
+
+- **Source:** Audit section "Family (d) — Volume" —
+  `models/features.py:160-166`. Prior `repo_audit.md` §13.2
+  flag verified.
+- **Severity:** S2.
+- **Description:** `volume_trend` uses bare integer literals
+  `10` and `30` for its rolling windows rather than reading
+  from `FEATURE_WINDOWS`. Config-driven experimentation
+  cannot reach these windows; magic numbers are also the
+  only ones not declared in the config registry across the
+  feature pipeline.
+- **Fix:** Add `"vol_trend_short": 10` and `"vol_trend_long":
+  30` to `FEATURE_WINDOWS` in `config/_models.py`. Wire
+  `features.py:160-161` to reference them.
+- **Acceptance criteria:** No bare numeric window literals
+  remain in `features.py` for `volume_trend`. The two new
+  keys exist in `FEATURE_WINDOWS`. Values produced by the
+  feature are identical to the pre-fix baseline on a
+  fixed-seed deterministic fixture (no semantic change,
+  only refactor).
+- **Target:** Phase 7 Step 6 (pre-retrain data hygiene
+  bundle, v0.8.0).
+- **Dependencies:** none.
+
+#### RM-07 | volume_ma20 cross-module assertion
+
+- **Source:** Audit section "Family (d) — Volume"
+  family-level notes — `data/cleaner.py:114` (producer) and
+  `models/features.py:106-110` (consumer).
+- **Severity:** S2 (hygiene).
+- **Description:** `volume_ma20` is produced in
+  `data/cleaner.py:114` and consumed in
+  `models/features.py:106` without explicit declaration in
+  `features.py`. Sole enforcement is the implicit call order
+  in `build_feature_matrix` at `features.py:265-267`. A
+  reader landing at `features.py:107` cold sees
+  `df["volume_ma20"]` with no apparent provenance.
+- **Fix:** Add `assert "volume_ma20" in df.columns,
+  "volume_ma20 must be produced by data/cleaner.py:normalize_
+  price_data before compute_technical_indicators"` at the top
+  of `compute_technical_indicators()` in
+  `models/features.py`. Documentation comment optional.
+- **Acceptance criteria:** Calling
+  `compute_technical_indicators` on a frame missing
+  `volume_ma20` raises `AssertionError` with the explanatory
+  message. The training pipeline (which always runs
+  `normalize_price_data` first) is unaffected.
+- **Target:** Phase 7 Step 6 (pre-retrain data hygiene
+  bundle, v0.8.0).
+- **Dependencies:** none.
+
+### Accepted as-is
+
+obv NaN guard incompleteness (severity S2): `dropna` backstop at `features.py:278` catches the NaN std rows; adding `min_periods=1` would change z-score semantics during warmup. No code change.
+obv naming convention (severity S2): renaming the column breaks FEATURE_COLUMNS order invariant and requires retraining every joblib model; deferred to Phase 10 as part of the next major model revision.
+returns ffill synthetic-zero artifact (severity S2): ffill is rate-limited to ≤3-bar runs by `MAX_CONSECUTIVE_FILL=3` in `data/cleaner.py:76-84`; the resulting synthetic zero returns are an inherited cleaning artifact, not a leak. Documentation hygiene only; no code change.
+realized_vol_20 annualization (severity S1): `ANNUALIZATION_FACTOR=8760` is documented and crypto-only scope is the Phase 7 invariant; also tracked as a Phase 8 portability forward-flag (see below).
+yearly_position granularity coupling (severity S1): all active crypto assets have >8760 hours of history so warmup is in the distant past; granularity-coupling is a Phase 8 concern. Also tracked as a Phase 8 portability forward-flag.
+
+### Phase 8 forward-flags
+
+The 9-feature CRYPTO-COUPLED table lives in the "Phase 8
+portability forward-flags" section earlier in this document
+and is not duplicated here. Two items appear in both the
+accepted-as-is bucket above (Phase 7 disposition: no Phase 7
+action) and the Phase 8 forward-flag bucket (Phase 8 action:
+per-asset-class parameterization): `realized_vol_20` and
+`yearly_position`. This double-listing is intentional, not a
+contradiction — the Phase 7 disposition is "do nothing because
+crypto-only scope makes the assumption load-bearing"; the
+Phase 8 disposition is "the assumption breaks the moment
+stocks re-enter the active universe." Same finding, different
+deadlines.
+
+### Phase 10 forward-flags
+
+Survivorship bias — per T4 ("Survivorship bias" section
+above), no remediation ticket is opened by Step 2. The actual
+fix is a point-in-time listings ingestion layer that does not
+exist in the repo today; Phase 10 owns the deliverable. The
+acceptance criterion for Phase 10 is reportable backtest
+results in two parallel columns (survivorship-corrected and
+uncorrected) with the delta documented per asset class.
+
+obv naming convention rename also deferred to Phase 10 as
+part of the next major model revision (renaming breaks
+FEATURE_COLUMNS order invariant and requires joblib retrain).
+
+### Sequencing notes
+
+Steps 3-6 will execute the backlog in this order:
+
+- **Step 3 (v0.7.3):** RM-01 + RM-02 ship together. RM-02
+  bundled into Step 3 (not Step 6) to keep Step 4's cost-drag
+  attribution clean — measuring cost drag against fully
+  cleaned data is the Step 4 deliverable, so the data fix
+  must precede it.
+- **Step 4 (v0.7.4):** Transaction cost model + slippage. The
+  T5 audit recorded slippage as NOT MODELED in the current
+  engine and explicitly deferred it to Step 4 rather than
+  opening a duplicate ticket. Step 4 re-runs the Phase 5
+  BTC-USD backtest with cost-aware numbers; this run produces
+  the corrected README table that RM-01's acceptance
+  criterion (c) references.
+- **Step 5 (v0.7.5):** Validation infrastructure (holdout,
+  regime labels, nested CV). No RM tickets from the Step 2
+  backlog target Step 5 directly.
+- **Step 6 (v0.8.0):** RM-03 through RM-07 bundle as the
+  "pre-retrain data hygiene" sub-tickets. Then retrain RF +
+  LSTM/FinBERT + final ensemble backtest on the holdout.
+  Phase 7 closes at v0.8.0.

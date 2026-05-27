@@ -74,12 +74,14 @@ namespace. Tags are reserved for step boundaries (v0.7.1, v0.7.2, ...)
 and phase boundaries (v0.8.0, v0.9.0, ...).
 
 ## Phase 7 plan (high-level)
-Five steps, targeting tag `v0.8.0`:
-1. Infrastructure — pyproject.toml, ruff, MLflow, centralized config (pydantic-settings).
-2. Data integrity audit — gap detection, dedup invariants, schema validation across `candles` and `price_snapshots`.
-3. Transaction cost model — realistic commission, slippage, and funding assumptions in the backtest engine.
-4. Validation infrastructure — walk-forward harness, leakage checks, holdout discipline.
-5. Retrain + validate — full retrain on hardened pipeline, including LSTM + ensemble + FinBERT re-implementation against the specs below.
+Phase 7 = Foundation Hardening, ending at tag `v0.8.0`.
+
+- Step 1 — Repo audit fixes (v0.7.1, ✓ closed May 25, 2026)
+- Step 2 — Data integrity audit (v0.7.2, closing May 26, 2026)
+- Step 3 — Engine fill-time remediation + log_returns -inf guard (v0.7.3) [NEW step inserted after T5 found S5 IMPOSSIBLE FILL]
+- Step 4 — Transaction cost model + cost-aware Phase 5 rerun (v0.7.4)
+- Step 5 — Validation infrastructure (holdout, regime labels, nested CV) (v0.7.5)
+- Step 6 — Retrain + LSTM/FinBERT re-implementation + final validation (v0.8.0, closes Phase 7)
 
 ## Architecture invariants
 These are real design decisions still in force from the previous workspace and must be preserved as Phase 7 work lands:
